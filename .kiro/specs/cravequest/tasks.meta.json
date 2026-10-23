@@ -1,0 +1,253 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create backend package layout and tooling": [
+      {
+        "executionId": "d05d4172-b502-4032-bc58-b2a035e5ef19",
+        "chatSessionId": "sess_e60ff4ba-b2d7-496e-9d5b-d137166341a6",
+        "timestamp": 1792737910597
+      },
+      {
+        "executionId": "d05d4172-b502-4032-bc58-b2a035e5ef19",
+        "chatSessionId": "sess_e60ff4ba-b2d7-496e-9d5b-d137166341a6",
+        "timestamp": 1792738341620
+      }
+    ],
+    "1.2 Implement env-driven settings with startup validation": [
+      {
+        "executionId": "3394cbdb-7d5a-4ebd-8aa0-d81b2800c421",
+        "chatSessionId": "sess_d8720d56-186f-4e06-afdf-edfb2a0ec3cc",
+        "timestamp": 1792738405674
+      },
+      {
+        "executionId": "3394cbdb-7d5a-4ebd-8aa0-d81b2800c421",
+        "chatSessionId": "sess_d8720d56-186f-4e06-afdf-edfb2a0ec3cc",
+        "timestamp": 1792738614267
+      }
+    ],
+    "1. Set up backend project structure and configuration": [
+      {
+        "executionId": "3394cbdb-7d5a-4ebd-8aa0-d81b2800c421",
+        "chatSessionId": "sess_d8720d56-186f-4e06-afdf-edfb2a0ec3cc",
+        "timestamp": 1792738614451
+      }
+    ],
+    "2.1 Implement Strategy/DecisionSource enums and Recipe_Schema models": [
+      {
+        "executionId": "b2f2f5d3-8fa2-4390-9203-b34515f04ee3",
+        "chatSessionId": "sess_93d59c45-1047-448c-b14f-935589af2000",
+        "timestamp": 1792738660818
+      },
+      {
+        "executionId": "b2f2f5d3-8fa2-4390-9203-b34515f04ee3",
+        "chatSessionId": "sess_93d59c45-1047-448c-b14f-935589af2000",
+        "timestamp": 1792739371330
+      }
+    ],
+    "2.2 Implement request and response models": [
+      {
+        "executionId": "03fae3e6-45c9-4449-bcd0-0a6c042219e5",
+        "chatSessionId": "sess_4bbd7d1f-dbda-4b22-831b-a1af6951f9c3",
+        "timestamp": 1792739474308
+      },
+      {
+        "executionId": "03fae3e6-45c9-4449-bcd0-0a6c042219e5",
+        "chatSessionId": "sess_4bbd7d1f-dbda-4b22-831b-a1af6951f9c3",
+        "timestamp": 1792739791474
+      }
+    ],
+    "2. Implement typed data models": [
+      {
+        "executionId": "03fae3e6-45c9-4449-bcd0-0a6c042219e5",
+        "chatSessionId": "sess_4bbd7d1f-dbda-4b22-831b-a1af6951f9c3",
+        "timestamp": 1792739791613
+      }
+    ],
+    "3.1 Implement normalization and pre-generation exclusion checks": [
+      {
+        "executionId": "995f76e7-0699-4055-bf38-a477e457e57f",
+        "chatSessionId": "sess_ac5817d9-8a36-4c37-a7d8-19fb174f3294",
+        "timestamp": 1792739862827
+      },
+      {
+        "executionId": "995f76e7-0699-4055-bf38-a477e457e57f",
+        "chatSessionId": "sess_ac5817d9-8a36-4c37-a7d8-19fb174f3294",
+        "timestamp": 1792740133854
+      }
+    ],
+    "3.2 Implement post-generation recipe validation": [
+      {
+        "executionId": "6b69e3ad-e857-4503-8b64-b248feea1dae",
+        "chatSessionId": "sess_f851454e-34e4-4250-8ac1-4644f70fd80f",
+        "timestamp": 1792740182599
+      },
+      {
+        "executionId": "6b69e3ad-e857-4503-8b64-b248feea1dae",
+        "chatSessionId": "sess_f851454e-34e4-4250-8ac1-4644f70fd80f",
+        "timestamp": 1792740439366
+      }
+    ],
+    "3. Implement the Dietary_Safety_Checker": [
+      {
+        "executionId": "6b69e3ad-e857-4503-8b64-b248feea1dae",
+        "chatSessionId": "sess_f851454e-34e4-4250-8ac1-4644f70fd80f",
+        "timestamp": 1792740439565
+      }
+    ],
+    "4.1 Implement separate decision/generation instrumentation": [
+      {
+        "executionId": "9f14264a-3207-4605-a87d-a1f65190e923",
+        "chatSessionId": "sess_2b3f025d-a406-4b0a-a7f1-6127f0b64803",
+        "timestamp": 1792740474415
+      },
+      {
+        "executionId": "9f14264a-3207-4605-a87d-a1f65190e923",
+        "chatSessionId": "sess_2b3f025d-a406-4b0a-a7f1-6127f0b64803",
+        "timestamp": 1792740706908
+      }
+    ],
+    "4. Implement the Metrics_Collector": [
+      {
+        "executionId": "9f14264a-3207-4605-a87d-a1f65190e923",
+        "chatSessionId": "sess_2b3f025d-a406-4b0a-a7f1-6127f0b64803",
+        "timestamp": 1792740707141
+      }
+    ],
+    "5.1 Define the adapter interface and DecisionResult": [
+      {
+        "executionId": "ee7113d5-6fc2-41d9-a3fc-b15d05df3945",
+        "chatSessionId": "sess_cae425ce-a5bd-4a2f-b008-44aa180b232b",
+        "timestamp": 1792740734081
+      },
+      {
+        "executionId": "ee7113d5-6fc2-41d9-a3fc-b15d05df3945",
+        "chatSessionId": "sess_cae425ce-a5bd-4a2f-b008-44aa180b232b",
+        "timestamp": 1792740903326
+      }
+    ],
+    "5.2 Implement RealDeciderAdapter against the Strands Decider provider": [
+      {
+        "executionId": "92f3b28a-134a-4148-9f5e-a51b2d4e5808",
+        "chatSessionId": "sess_05f8f731-c7db-4474-9ad2-22a39c41a227",
+        "timestamp": 1792740961095
+      },
+      {
+        "executionId": "92f3b28a-134a-4148-9f5e-a51b2d4e5808",
+        "chatSessionId": "sess_05f8f731-c7db-4474-9ad2-22a39c41a227",
+        "timestamp": 1792741751913
+      }
+    ],
+    "5.3 Implement MockDeciderAdapter (Mock_Mode)": [
+      {
+        "executionId": "1dd8b3c1-c807-4541-af46-fc2809466f75",
+        "chatSessionId": "sess_d99da14e-b855-4686-9875-a79e1e584ccf",
+        "timestamp": 1792741805793
+      },
+      {
+        "executionId": "1dd8b3c1-c807-4541-af46-fc2809466f75",
+        "chatSessionId": "sess_d99da14e-b855-4686-9875-a79e1e584ccf",
+        "timestamp": 1792742017479
+      }
+    ],
+    "5. Implement the DeciderAdapter": [
+      {
+        "executionId": "1dd8b3c1-c807-4541-af46-fc2809466f75",
+        "chatSessionId": "sess_d99da14e-b855-4686-9875-a79e1e584ccf",
+        "timestamp": 1792742017711
+      }
+    ],
+    "6.1 Implement strategy selection, threshold, and deterministic fallback": [
+      {
+        "executionId": "55134dd9-9abb-4d87-8a1c-3ac0eaf17355",
+        "chatSessionId": "sess_b26a56ff-474d-4f73-9b91-f31c30f34093",
+        "timestamp": 1792742053172
+      },
+      {
+        "executionId": "55134dd9-9abb-4d87-8a1c-3ac0eaf17355",
+        "chatSessionId": "sess_b26a56ff-474d-4f73-9b91-f31c30f34093",
+        "timestamp": 1792742596548
+      }
+    ],
+    "6. Implement the Decision_Module (decision_patterns/cooking_strategy.py)": [
+      {
+        "executionId": "55134dd9-9abb-4d87-8a1c-3ac0eaf17355",
+        "chatSessionId": "sess_b26a56ff-474d-4f73-9b91-f31c30f34093",
+        "timestamp": 1792742596658
+      }
+    ],
+    "7.1 Implement Converse Tool Use generation with Recipe_Schema": [
+      {
+        "executionId": "6582f442-5e35-4368-aa2f-317765f1c3d7",
+        "chatSessionId": "sess_8dc020ca-0da0-4920-a15c-526fae1a602c",
+        "timestamp": 1792742646814
+      },
+      {
+        "executionId": "6582f442-5e35-4368-aa2f-317765f1c3d7",
+        "chatSessionId": "sess_8dc020ca-0da0-4920-a15c-526fae1a602c",
+        "timestamp": 1792743320717
+      }
+    ],
+    "7.2 Implement retry/backoff and safe failure handling": [
+      {
+        "executionId": "e8753223-73ca-4f01-af28-d1babb697174",
+        "chatSessionId": "sess_cb60f7a4-2eb2-4fb3-9179-1b7417f48370",
+        "timestamp": 1792743422964
+      },
+      {
+        "executionId": "e8753223-73ca-4f01-af28-d1babb697174",
+        "chatSessionId": "sess_cb60f7a4-2eb2-4fb3-9179-1b7417f48370",
+        "timestamp": 1792744230289
+      }
+    ],
+    "7. Implement the Bedrock_Generator": [
+      {
+        "executionId": "e8753223-73ca-4f01-af28-d1babb697174",
+        "chatSessionId": "sess_cb60f7a4-2eb2-4fb3-9179-1b7417f48370",
+        "timestamp": 1792744230469
+      }
+    ],
+    "8. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "409fcfa5-72f9-4bcc-b628-ad662f2ef895",
+        "chatSessionId": "sess_5b0a0595-db18-433b-9aea-12aa569286fa",
+        "timestamp": 1792744286237
+      },
+      {
+        "executionId": "409fcfa5-72f9-4bcc-b628-ad662f2ef895",
+        "chatSessionId": "sess_5b0a0595-db18-433b-9aea-12aa569286fa",
+        "timestamp": 1792746547470
+      }
+    ],
+    "9.1 Implement quick_recipe tool": [
+      {
+        "executionId": "5733c1f0-cd61-40e2-b438-f311aa25da92",
+        "chatSessionId": "sess_3f1ecf95-75e5-455b-be16-b87a5bc36cdf",
+        "timestamp": 1792764401744
+      },
+      {
+        "executionId": "5733c1f0-cd61-40e2-b438-f311aa25da92",
+        "chatSessionId": "sess_3f1ecf95-75e5-455b-be16-b87a5bc36cdf",
+        "timestamp": 1792765515387
+      }
+    ],
+    "9.2 Implement leftover_remix tool with its invariants": [
+      {
+        "executionId": "6c567fdd-4138-40d1-9889-f669f35358a6",
+        "chatSessionId": "sess_db420221-077d-4672-9ad5-97ddf678fa90",
+        "timestamp": 1792765568959
+      },
+      {
+        "executionId": "6c567fdd-4138-40d1-9889-f669f35358a6",
+        "chatSessionId": "sess_db420221-077d-4672-9ad5-97ddf678fa90",
+        "timestamp": 1792765883459
+      }
+    ],
+    "9.3 Implement no_cook_snack tool": [
+      {
+        "executionId": "38357ead-1e63-4ecb-8705-e34d7243d041",
+        "chatSessionId": "sess_b882b49d-4709-4a59-92ea-aba4fbd20e83",
+        "timestamp": 1792766392609
+      }
+    ]
+  }
+}

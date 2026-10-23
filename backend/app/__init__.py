@@ -1,0 +1,1 @@
+"""CraveQuest backend application package."""

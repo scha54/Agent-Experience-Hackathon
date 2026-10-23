@@ -1,0 +1,32 @@
+# Secrets / environment — never commit real values (Req 26.3)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,11 @@
+# CraveQuest backend runtime dependencies.
+# Pinned to reasonable recent major/minor ranges; refine as needed.
+fastapi>=0.111,<1.0
+uvicorn[standard]>=0.30,<1.0
+pydantic>=2.7,<3.0
+pydantic-settings>=2.2,<3.0
+boto3>=1.34,<2.0
+litellm>=1.40,<2.0
+python-dotenv>=1.0,<2.0
+
+# Development / test dependencies (install with: pip install -r requirements.txt -r requirements-dev.txt)
