@@ -26,6 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import ConfigError, get_settings
+from app.logging_config import configure_logging, get_logger
 from app.models.responses import FieldError, ValidationErrorResponse
 
 
@@ -319,9 +320,16 @@ def _configure_error_handlers(application: FastAPI) -> None:
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
-        # Do not log or serialize ``exc``: it may contain prompts, credentials,
-        # request values, or a traceback. The client receives only a safe code.
-        del request, exc
+        del request
+        # OE-2: log a SAFE error-category line server-side. ``logger.exception``
+        # records the traceback for CloudWatch debugging (it never reaches the
+        # client), while the structured safe field carries only the exception
+        # CLASS NAME — never the message, prompts, credentials, or request
+        # values. The HTTP response stays exactly as before (non-leaking).
+        get_logger().exception(
+            "unhandled_exception",
+            extra={"error_category": type(exc).__name__},
+        )
         return JSONResponse(
             status_code=500,
             content={
@@ -353,6 +361,8 @@ def create_app(settings: Any | None = None) -> FastAPI:
     invalid required variables.
     """
     resolved_settings = settings if settings is not None else get_settings()
+    # OE-2: configure structured JSON logging once at startup (idempotent).
+    configure_logging()
     application = FastAPI(
         title="CraveQuest Backend API",
         version="0.1.0",
@@ -382,8 +392,10 @@ def create_app(settings: Any | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=resolved_settings.allowed_origins_list,
         allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        # SEC-3: tighten CORS to the actual methods/headers the API uses instead
+        # of the wildcard. Keep allow_credentials=False.
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["content-type", "authorization"],
     )
     return application
 
@@ -398,6 +410,7 @@ def _build_import_safe_app() -> FastAPI:
     try:
         return create_app()
     except ConfigError:
+        configure_logging()
         application = FastAPI(
             title="CraveQuest Backend API",
             version="0.1.0",
@@ -423,8 +436,9 @@ def _build_import_safe_app() -> FastAPI:
             CORSMiddleware,
             allow_origins=_cors_origins_from_environment(),
             allow_credentials=False,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            # SEC-3: tighten CORS to the actual methods/headers used.
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["content-type", "authorization"],
         )
         return application
 

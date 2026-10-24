@@ -35,5 +35,12 @@ EXPOSE 8080
 # NEVER bake secrets into the image. Configuration is supplied at runtime via
 # environment variables / secret manager (Req 26.3).
 
+# OE-3: container health check parity with the ECS task definition. Uses a
+# Python one-liner (python3 already present) instead of installing curl, so no
+# extra apt layer is added. ECS uses the task-definition healthCheck at runtime;
+# this keeps local `docker run` self-reporting consistent.
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=30s \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health', timeout=2).status==200 else 1)"
+
 # Run the FastAPI Backend_API. uvicorn is declared in requirements.txt.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

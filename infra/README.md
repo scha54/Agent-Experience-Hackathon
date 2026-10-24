@@ -66,6 +66,17 @@ supplied at runtime from AWS Secrets Manager / SSM, not committed here.
 | `logRetentionDays` / `LOG_RETENTION_DAYS` | CloudWatch retention | `30` |
 | `frontendRepository` / `FRONTEND_REPOSITORY` | Git repo URL for Amplify builds | unset (manual deploy) |
 | `frontendBranch` / `FRONTEND_BRANCH` | Branch Amplify builds | `main` |
+| `environment` / `ENVIRONMENT` | Deployment environment label; also tag + SEC-3 guard | `dev` |
+| `owner` / `OWNER` | Resource owner (cost-allocation/operational tag) | `unknown` |
+| `budgetMonthlyLimitUsd` / `BUDGET_MONTHLY_LIMIT_USD` | Monthly AWS Budget limit (USD) | `50` |
+| `budgetNotificationEmail` / `BUDGET_NOTIFICATION_EMAIL` | Email for budget notifications (80% actual / 100% forecast) | unset |
+| `opsAlertEmail` / `OPS_ALERT_EMAIL` | Email subscribed to the ops-alerts SNS topic | unset |
+| `fallbackRateAlarmThreshold` / `FALLBACK_RATE_ALARM_THRESHOLD` | Fallback-rate alarm threshold [0,1] | `0.5` |
+
+> **SEC-3 guard:** for any `environment` other than `dev`, synth FAILS if
+> `allowedOrigins` is still the localhost default (`http://localhost:5173`).
+> Pass real origins via `-c allowedOrigins=...` (or `ALLOWED_ORIGINS`). Local
+> `dev` synth is never blocked.
 
 ## Commands
 
@@ -88,4 +99,46 @@ npx cdk deploy \
 
 > Deploying creates paid AWS resources (Bedrock invocations, Fargate running
 > tasks, API Gateway requests, Amplify builds/hosting, CloudWatch ingestion).
-> This deployment is **not** free. Set an AWS Budget and billing alarm first.
+> This deployment is **not** free. The stack now codifies a monthly AWS Budget
+> (CO-1); see below.
+
+## Observability and cost guardrails (Well-Architected Bucket A)
+
+The stack provisions, additively and reversibly:
+
+- **CO-1 — Monthly AWS Budget**: an `AWS::Budgets::Budget` with a configurable
+  USD limit (`budgetMonthlyLimitUsd`, default `50`). When
+  `budgetNotificationEmail` is set, it notifies at 80% ACTUAL and 100%
+  FORECASTED spend. The AWS/Billing `EstimatedCharges` CloudWatch metric exists
+  only in `us-east-1`, so the stack deliberately does **not** create a
+  cross-region billing alarm (it would break synth elsewhere); the Budgets path
+  is the cost guardrail.
+- **OE-1 — Alarms + dashboard**: CloudWatch alarms for ALB target 5xx,
+  unhealthy hosts, ECS CPU/memory, and Bedrock throttles, plus a
+  `CraveQuest-Ops` dashboard. All alarms publish to a shared `OpsAlerts` SNS
+  topic (subscribe `opsAlertEmail` to receive them).
+- **REL-2 — Fallback-rate metric**: the backend emits the Decider fallback rate
+  as CloudWatch EMF (`CraveQuest/Agent` / `FallbackRate`) from stdout, and the
+  stack alarms on a sustained high rate (`fallbackRateAlarmThreshold`).
+- **OE-3 — Container health check**: the ECS container definition includes a
+  Python-based health check against `/health` on port 8080.
+
+### Container image scanning (SEC-4)
+
+The backend image is published to the CDK-managed asset ECR repository via
+`DockerImageAsset`, which has no `imageScanOnPush` property. Rather than switch
+to an explicit `ecr.Repository` (which would rework the asset push flow and risk
+breaking `cdk deploy`), enable scanning at the **account level**: turn on
+**Amazon Inspector for ECR** in the AWS console (Inspector → Account management →
+enable ECR scanning) or via `aws inspector2 enable --resource-types ECR`. This
+scans every repository, including the CDK asset repo, on push. This is the
+least-disruptive, synth-clean remediation and is intentionally a documented
+account step, not a code change.
+
+### Cost-allocation tags (OE-5 / CO-5)
+
+The stack applies `Project`, `ManagedBy`, `Environment`, and `Owner` tags to
+every taggable resource. To break costs down by these in Cost Explorer you must
+**activate them as cost-allocation tags** in the AWS Billing console (Billing →
+Cost allocation tags → activate `Environment`/`Owner`). This is a manual,
+account-level step that cannot be performed in CDK/CloudFormation.

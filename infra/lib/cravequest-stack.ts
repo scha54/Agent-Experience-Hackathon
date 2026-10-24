@@ -48,6 +48,11 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2_integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as amplify from 'aws-cdk-lib/aws-amplify';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cloudwatch_actions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as sns_subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as path from 'path';
 import { StackConfig } from './config';
 
@@ -165,6 +170,16 @@ export class CraveQuestStack extends cdk.Stack {
     // ── Container image (Backend_API + Decider_2B) ──────────────────────
     // Built from the backend/ directory Dockerfile. The image bundles the
     // FastAPI Backend_API and the Decider_2B serving process.
+    //
+    // SEC-4 (container image scanning): this image is pushed to the CDK-managed
+    // asset ECR repository (`cdk-*-container-assets-*`). `DockerImageAsset` has
+    // no `imageScanOnPush` prop, and switching to an explicit `ecr.Repository`
+    // would require reworking the asset push flow (brittle, and risks breaking
+    // `cdk deploy`). The least-disruptive, synth-clean remediation is to enable
+    // scanning at the ACCOUNT level: turn on Amazon Inspector for ECR so every
+    // repository (including the CDK asset repo) is scanned on push. See
+    // infra/README.md "Container image scanning". Intentionally no explicit
+    // ecr.Repository is created here.
     const backendImage = new ecr_assets.DockerImageAsset(this, 'BackendImage', {
       directory: path.join(__dirname, '..', '..', 'backend'),
       platform: ecr_assets.Platform.LINUX_AMD64,
@@ -211,6 +226,21 @@ export class CraveQuestStack extends cdk.Stack {
         ALLOWED_ORIGINS: config.allowedOrigins,
       },
       portMappings: [{ containerPort: 8080 }],
+      // OE-3: container-level health check so ECS can replace a hung task
+      // independently of the ALB target-group probe. Uses a Python one-liner
+      // (python:3.11-slim already ships python3) instead of installing curl, so
+      // no extra apt layer bloats the image. Hits the same cheap /health
+      // liveness endpoint the container serves on 8080 (backend/app/api/health.py).
+      healthCheck: {
+        command: [
+          'CMD-SHELL',
+          'python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen(\'http://localhost:8080/health\', timeout=2).status==200 else 1)"',
+        ],
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        retries: 3,
+        startPeriod: cdk.Duration.seconds(30),
+      },
     });
 
     const service = new ecs.FargateService(this, 'BackendService', {
@@ -240,7 +270,7 @@ export class CraveQuestStack extends cdk.Stack {
       protocol: elbv2.ApplicationProtocol.HTTP,
     });
 
-    listener.addTargets('BackendTargets', {
+    const targetGroup = listener.addTargets('BackendTargets', {
       port: 8080,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targets: [service.loadBalancerTarget({
@@ -284,6 +314,225 @@ export class CraveQuestStack extends cdk.Stack {
         { vpcLink },
       ),
     });
+
+    // ── CO-1 / OE-1: shared operational-alerts SNS topic ────────────────
+    // One topic is reused for both cost (CO-1) and operational (OE-1) alerts,
+    // keeping subscriptions and billing simple. An email is subscribed only
+    // when configured; otherwise the topic exists with no subscription.
+    const opsAlerts = new sns.Topic(this, 'OpsAlerts', {
+      displayName: 'CraveQuest operational alerts',
+    });
+    if (config.opsAlertEmail) {
+      opsAlerts.addSubscription(
+        new sns_subscriptions.EmailSubscription(config.opsAlertEmail),
+      );
+    }
+
+    // ── CO-1: monthly AWS Budget (cost guardrail) ───────────────────────
+    // The budget is ALWAYS created. Subscriber notifications are wired only
+    // when a notification email is configured; when none is set we omit
+    // `notificationsWithSubscribers` entirely so synth never emits an
+    // empty-subscriber notification (which would fail deploy). Default monthly
+    // limit is `budgetMonthlyLimitUsd` (≈50 USD) from config.ts.
+    const budgetSubscribers = config.budgetNotificationEmail
+      ? [
+          {
+            notification: {
+              notificationType: 'ACTUAL',
+              comparisonOperator: 'GREATER_THAN_OR_EQUAL_TO',
+              threshold: 80,
+              thresholdType: 'PERCENTAGE',
+            },
+            subscribers: [
+              {
+                subscriptionType: 'EMAIL',
+                address: config.budgetNotificationEmail,
+              },
+            ],
+          },
+          {
+            notification: {
+              notificationType: 'FORECASTED',
+              comparisonOperator: 'GREATER_THAN_OR_EQUAL_TO',
+              threshold: 100,
+              thresholdType: 'PERCENTAGE',
+            },
+            subscribers: [
+              {
+                subscriptionType: 'EMAIL',
+                address: config.budgetNotificationEmail,
+              },
+            ],
+          },
+        ]
+      : undefined;
+
+    new budgets.CfnBudget(this, 'MonthlyBudget', {
+      budget: {
+        budgetType: 'COST',
+        timeUnit: 'MONTHLY',
+        budgetLimit: {
+          amount: config.budgetMonthlyLimitUsd,
+          unit: 'USD',
+        },
+      },
+      notificationsWithSubscribers: budgetSubscribers,
+    });
+
+    // The AWS/Billing `EstimatedCharges` metric is published ONLY in us-east-1,
+    // so a cross-region `cloudwatch.Alarm` on it would break synth/deploy in any
+    // other region. We prefer the AWS Budgets notification path above. If an
+    // EstimatedCharges alarm is ever wanted, gate it on region to stay safe:
+    if (this.region === 'us-east-1') {
+      // Optional, region-gated EstimatedCharges alarm could be created here.
+      // Intentionally left out; AWS Budgets (above) is the cost guardrail.
+    }
+
+    // ── OE-1: CloudWatch alarms wired to the SNS topic ──────────────────
+    const snsAction = new cloudwatch_actions.SnsAction(opsAlerts);
+
+    // ALB target 5xx (backend-origin errors).
+    new cloudwatch.Alarm(this, 'Alb5xxAlarm', {
+      alarmDescription: 'Backend target 5xx responses are elevated.',
+      metric: alb.metrics.httpCodeTarget(
+        elbv2.HttpCodeTarget.TARGET_5XX_COUNT,
+        { period: cdk.Duration.minutes(5), statistic: 'Sum' },
+      ),
+      threshold: 5,
+      evaluationPeriods: 2,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(snsAction);
+
+    // Unhealthy hosts behind the target group.
+    new cloudwatch.Alarm(this, 'UnhealthyHostsAlarm', {
+      alarmDescription: 'One or more backend targets are unhealthy.',
+      metric: targetGroup.metrics.unhealthyHostCount({
+        period: cdk.Duration.minutes(1),
+      }),
+      threshold: 1,
+      evaluationPeriods: 3,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(snsAction);
+
+    // ECS CPU high.
+    new cloudwatch.Alarm(this, 'EcsCpuHighAlarm', {
+      alarmDescription: 'Backend service CPU utilization is high.',
+      metric: service.metricCpuUtilization({
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 85,
+      evaluationPeriods: 3,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(snsAction);
+
+    // ECS memory high.
+    new cloudwatch.Alarm(this, 'EcsMemoryHighAlarm', {
+      alarmDescription: 'Backend service memory utilization is high.',
+      metric: service.metricMemoryUtilization({
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 85,
+      evaluationPeriods: 3,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(snsAction);
+
+    // Bedrock invocation throttles (model throttling exhaustion visibility).
+    const bedrockThrottlesMetric = new cloudwatch.Metric({
+      namespace: 'AWS/Bedrock',
+      metricName: 'InvocationThrottles',
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(5),
+    });
+    new cloudwatch.Alarm(this, 'BedrockThrottlesAlarm', {
+      alarmDescription: 'Amazon Bedrock is throttling invocations.',
+      metric: bedrockThrottlesMetric,
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(snsAction);
+
+    // ── REL-2 observability: fallback-rate custom metric + alarm ────────
+    // The backend emits FallbackRate as CloudWatch EMF to stdout under the
+    // namespace 'CraveQuest/Agent' (no extra IAM; CloudWatch extracts it from
+    // the container logs). A sustained high fallback rate means the Decider is
+    // silently degrading to the deterministic fallback — alarm on it.
+    const fallbackRateMetric = new cloudwatch.Metric({
+      namespace: 'CraveQuest/Agent',
+      metricName: 'FallbackRate',
+      statistic: 'Average',
+      period: cdk.Duration.minutes(5),
+    });
+    new cloudwatch.Alarm(this, 'FallbackRateHighAlarm', {
+      alarmDescription:
+        'Decision fallback rate is sustained high (Decider likely degraded).',
+      metric: fallbackRateMetric,
+      threshold: config.fallbackRateAlarmThreshold,
+      evaluationPeriods: 3,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    }).addAlarmAction(snsAction);
+
+    // ── OE-1: operational dashboard ─────────────────────────────────────
+    const dashboard = new cloudwatch.Dashboard(this, 'OpsDashboard', {
+      dashboardName: 'CraveQuest-Ops',
+    });
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'ALB target 5xx',
+        left: [
+          alb.metrics.httpCodeTarget(elbv2.HttpCodeTarget.TARGET_5XX_COUNT, {
+            period: cdk.Duration.minutes(5),
+            statistic: 'Sum',
+          }),
+          alb.metrics.httpCodeElb(elbv2.HttpCodeElb.ELB_5XX_COUNT, {
+            period: cdk.Duration.minutes(5),
+            statistic: 'Sum',
+          }),
+        ],
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Unhealthy hosts',
+        left: [
+          targetGroup.metrics.unhealthyHostCount({
+            period: cdk.Duration.minutes(1),
+          }),
+        ],
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'ECS CPU / memory',
+        left: [
+          service.metricCpuUtilization({ period: cdk.Duration.minutes(5) }),
+          service.metricMemoryUtilization({ period: cdk.Duration.minutes(5) }),
+        ],
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Bedrock invocations / throttles',
+        left: [
+          new cloudwatch.Metric({
+            namespace: 'AWS/Bedrock',
+            metricName: 'Invocations',
+            statistic: 'Sum',
+            period: cdk.Duration.minutes(5),
+          }),
+          bedrockThrottlesMetric,
+        ],
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Decision fallback rate',
+        left: [fallbackRateMetric],
+      }),
+    );
 
     // ── AWS Amplify Hosting for the frontend (Req 28.1) ─────────────────
     // Serves the React + Vite static bundle and provides the public frontend

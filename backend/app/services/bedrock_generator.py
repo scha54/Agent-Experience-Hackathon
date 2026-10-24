@@ -60,6 +60,7 @@ Requirements: 9.1, 9.2, 9.3, 9.4, 9.6, 10.1, 10.2, 10.3, 10.4, 10.5, 23.4,
 from __future__ import annotations
 
 import json
+import threading
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -94,6 +95,67 @@ _DEFAULT_ATTEMPT_TIMEOUT_MS = 30000
 # Maximum dietary regeneration attempts before failing safe (Req 24.2, 25.3).
 # Fixed by the requirement at 3 attempts (not the Bedrock retry count).
 _MAX_DIETARY_ATTEMPTS = 3
+
+# PERF-3: process-wide cache of built ``bedrock-runtime`` clients, keyed by the
+# parameters that affect client construction — ``(region_name, attempt_timeout_ms)``.
+# The orchestrator builds a ``BedrockGenerator`` per request; without this cache
+# each request would rebuild a boto3 client (credential resolution + TLS/pool
+# setup). boto3 clients are thread-safe for invocation, so one cached client is
+# reused across concurrent requests. An EXPLICITLY injected client (tests) is
+# never cached and bypasses this entirely, preserving existing behavior.
+_CLIENT_CACHE: dict[tuple[Any, int], Any] = {}
+_CLIENT_CACHE_LOCK = threading.Lock()
+
+
+def _build_or_get_client(region_name: Any | None, attempt_timeout_ms: int) -> Any:
+    """Return a cached ``bedrock-runtime`` client, building it once per key.
+
+    The ``botocore.Config`` (per-attempt connect/read timeout and disabled
+    botocore retries, so this module's retry loop stays the single source of
+    retry behavior) is constructed EXACTLY as before — only the resulting client
+    object is now reused across requests (PERF-3). Raises :class:`GenerationError`
+    with a safe message if the AWS SDK cannot be imported.
+    """
+    key = (region_name, attempt_timeout_ms)
+    cached = _CLIENT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    with _CLIENT_CACHE_LOCK:
+        cached = _CLIENT_CACHE.get(key)
+        if cached is not None:
+            return cached
+        try:
+            import boto3  # type: ignore import-not-found
+        except Exception as exc:  # pragma: no cover - env-dependent
+            raise GenerationError(
+                "Recipe generation is unavailable: the AWS SDK could not be "
+                "imported"
+            ) from exc
+        kwargs: dict[str, Any] = {}
+        if region_name:
+            kwargs["region_name"] = region_name
+        # Apply the per-attempt timeout as the client connect/read timeout so a
+        # single Converse attempt that exceeds BEDROCK_ATTEMPT_TIMEOUT_MS is
+        # surfaced as a timeout and retried (Req 10.4). Botocore's own retry
+        # layer is disabled so this generator is the single source of retry
+        # behavior governed by BEDROCK_MAX_RETRIES (Req 10.3 / 27.1).
+        try:
+            from botocore.config import Config  # type: ignore import-not-found
+
+            timeout_s = attempt_timeout_ms / 1000.0
+            kwargs["config"] = Config(
+                connect_timeout=timeout_s,
+                read_timeout=timeout_s,
+                retries={"max_attempts": 0, "mode": "standard"},
+            )
+        except Exception:  # pragma: no cover - botocore ships with boto3
+            # If botocore's Config is unavailable for any reason, fall back to a
+            # client without an explicit per-attempt timeout; the retry loop
+            # still applies.
+            pass
+        client = boto3.client("bedrock-runtime", **kwargs)
+        _CLIENT_CACHE[key] = client
+        return client
 
 # boto3/botocore error names that represent a retryable provider failure
 # (throttling or a transient service/model error). Matched by exception class
@@ -328,44 +390,20 @@ class BedrockGenerator:
 
     # -- client -------------------------------------------------------------
     def _get_client(self) -> Any:
-        """Return the ``bedrock-runtime`` client, creating it lazily if needed.
+        """Return the ``bedrock-runtime`` client, reusing a cached one if needed.
 
-        boto3 is imported lazily so importing this module (and constructing the
-        generator) never requires the optional dependency or AWS credentials; an
-        import failure surfaces as a safe :class:`GenerationError` at call time.
+        An explicitly injected client (constructor ``client=``, used by tests) is
+        returned as-is and is never cached. Otherwise a process-wide cached
+        client is reused across requests (PERF-3) via :func:`_build_or_get_client`,
+        keyed by ``(region_name, attempt_timeout_ms)`` so the per-attempt
+        ``botocore.Config`` timeout/retry behavior is preserved exactly. boto3 is
+        imported lazily inside the cache builder so importing this module never
+        requires the optional dependency or AWS credentials; an import failure
+        surfaces as a safe :class:`GenerationError` at call time.
         """
-        if self._client is None:
-            try:
-                import boto3  # type: ignore import-not-found
-            except Exception as exc:  # pragma: no cover - env-dependent
-                raise GenerationError(
-                    "Recipe generation is unavailable: the AWS SDK could not be "
-                    "imported"
-                ) from exc
-            kwargs: dict[str, Any] = {}
-            if self._region_name:
-                kwargs["region_name"] = self._region_name
-            # Apply the per-attempt timeout as the client connect/read timeout so
-            # a single Converse attempt that exceeds BEDROCK_ATTEMPT_TIMEOUT_MS is
-            # surfaced as a timeout and retried (Req 10.4). Botocore's own retry
-            # layer is disabled so this generator is the single source of retry
-            # behavior governed by BEDROCK_MAX_RETRIES (Req 10.3 / 27.1).
-            try:
-                from botocore.config import Config  # type: ignore import-not-found
-
-                timeout_s = self._attempt_timeout_ms / 1000.0
-                kwargs["config"] = Config(
-                    connect_timeout=timeout_s,
-                    read_timeout=timeout_s,
-                    retries={"max_attempts": 0, "mode": "standard"},
-                )
-            except Exception:  # pragma: no cover - botocore ships with boto3
-                # If botocore's Config is unavailable for any reason, fall back to
-                # a client without an explicit per-attempt timeout; the retry loop
-                # still applies.
-                pass
-            self._client = boto3.client("bedrock-runtime", **kwargs)
-        return self._client
+        if self._client is not None:
+            return self._client
+        return _build_or_get_client(self._region_name, self._attempt_timeout_ms)
 
     # -- tool config / prompt ----------------------------------------------
     @staticmethod

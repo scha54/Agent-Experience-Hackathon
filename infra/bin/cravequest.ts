@@ -19,7 +19,7 @@ const app = new cdk.App();
 // variables — never hardcoded secrets or credentials (Req 26.3).
 const config = loadStackConfig(app);
 
-new CraveQuestStack(app, 'CraveQuestStack', {
+const stack = new CraveQuestStack(app, 'CraveQuestStack', {
   config,
   // Resolve the target account/region from the standard CDK environment
   // variables so the same source deploys to any configured account.
@@ -34,5 +34,14 @@ new CraveQuestStack(app, 'CraveQuestStack', {
     ManagedBy: 'aws-cdk',
   },
 });
+
+// OE-5 / CO-5: cost-allocation + operational tags applied at stack scope so
+// they propagate to every taggable resource. `Environment` and `Owner` come
+// from config.ts (context/env with safe defaults). NOTE: tags only become
+// usable in Cost Explorer after they are activated as cost-allocation tags in
+// the AWS Billing console — that is a manual, account-level step and cannot be
+// done in CDK/CloudFormation. See infra/README.md.
+cdk.Tags.of(stack).add('Environment', config.environment);
+cdk.Tags.of(stack).add('Owner', config.owner);
 
 app.synth();

@@ -63,7 +63,46 @@ export interface StackConfig {
 
   /** Git branch Amplify builds from when a repository is connected. */
   readonly frontendBranch: string;
+
+  /**
+   * Deployment environment label (e.g. `dev`, `staging`, `prod`). Applied as a
+   * cost-allocation/operational tag (OE-5 / CO-5) and used by the SEC-3
+   * synth-time guard to require real CORS origins outside `dev`.
+   */
+  readonly environment: string;
+
+  /** Resource owner, applied as a cost-allocation/operational tag (OE-5 / CO-5). */
+  readonly owner: string;
+
+  /**
+   * Monthly AWS Budget limit in USD (CO-1). The budget is always created; the
+   * limit is configurable with a conservative default for an MVP.
+   */
+  readonly budgetMonthlyLimitUsd: number;
+
+  /**
+   * Optional email for AWS Budget cost notifications (CO-1). When unset the
+   * budget is still created but no subscriber notifications are wired (so synth
+   * never emits an empty-subscriber notification).
+   */
+  readonly budgetNotificationEmail?: string;
+
+  /**
+   * Optional email subscribed to the shared operational-alerts SNS topic
+   * (CO-1 / OE-1). When unset the topic is still created but has no email
+   * subscription.
+   */
+  readonly opsAlertEmail?: string;
+
+  /**
+   * Fallback-rate alarm threshold in [0,1] (REL-2 observability). A sustained
+   * decision fallback rate at/above this fires the SNS alarm. Default 0.5.
+   */
+  readonly fallbackRateAlarmThreshold: number;
 }
+
+/** The localhost CORS default; a non-dev deploy that still carries it fails synth (SEC-3). */
+export const LOCALHOST_ALLOWED_ORIGINS_DEFAULT = 'http://localhost:5173';
 
 /**
  * Read a value from CDK context first, then the environment, then a default.
@@ -108,12 +147,35 @@ export function loadStackConfig(app: cdk.App): StackConfig {
     ? bedrockModelArnsRaw.split(',').map((a) => a.trim()).filter((a) => a.length > 0)
     : undefined;
 
+  const allowedOrigins =
+    fromContextOrEnv(app, 'allowedOrigins', 'ALLOWED_ORIGINS') ??
+    LOCALHOST_ALLOWED_ORIGINS_DEFAULT;
+
+  const environment = fromContextOrEnv(
+    app,
+    'environment',
+    'ENVIRONMENT',
+    'dev',
+  )!;
+
+  // SEC-3: fail fast at synth time when a NON-dev deployment is still carrying
+  // the localhost CORS default. Local/dev synth (the default) is never blocked.
+  if (
+    environment !== 'dev' &&
+    allowedOrigins.trim() === LOCALHOST_ALLOWED_ORIGINS_DEFAULT
+  ) {
+    throw new Error(
+      `allowedOrigins must be set to real origins for non-dev deployments ` +
+        `(environment='${environment}'); it is still the localhost default ` +
+        `'${LOCALHOST_ALLOWED_ORIGINS_DEFAULT}'. Pass -c allowedOrigins=... or ` +
+        `set ALLOWED_ORIGINS.`,
+    );
+  }
+
   return {
     bedrockModelId,
     bedrockModelArns,
-    allowedOrigins:
-      fromContextOrEnv(app, 'allowedOrigins', 'ALLOWED_ORIGINS') ??
-      'http://localhost:5173',
+    allowedOrigins,
     deciderMode: fromContextOrEnv(app, 'deciderMode', 'DECIDER_MODE', 'real')!,
     deciderModel:
       fromContextOrEnv(app, 'deciderModel', 'DECIDER_MODEL') ??
@@ -149,5 +211,32 @@ export function loadStackConfig(app: cdk.App): StackConfig {
       'FRONTEND_BRANCH',
       'main',
     )!,
+    environment,
+    owner: fromContextOrEnv(app, 'owner', 'OWNER', 'unknown')!,
+    budgetMonthlyLimitUsd: parseInt(
+      fromContextOrEnv(
+        app,
+        'budgetMonthlyLimitUsd',
+        'BUDGET_MONTHLY_LIMIT_USD',
+        '50',
+      )!,
+      10,
+    ),
+    // Emails have no safe default: left undefined when unset so subscriber
+    // wiring stays guarded (CO-1 / OE-1).
+    budgetNotificationEmail: fromContextOrEnv(
+      app,
+      'budgetNotificationEmail',
+      'BUDGET_NOTIFICATION_EMAIL',
+    ),
+    opsAlertEmail: fromContextOrEnv(app, 'opsAlertEmail', 'OPS_ALERT_EMAIL'),
+    fallbackRateAlarmThreshold: parseFloat(
+      fromContextOrEnv(
+        app,
+        'fallbackRateAlarmThreshold',
+        'FALLBACK_RATE_ALARM_THRESHOLD',
+        '0.5',
+      )!,
+    ),
   };
 }

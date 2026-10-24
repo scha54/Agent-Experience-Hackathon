@@ -31,6 +31,38 @@ def test_health_contains_only_status_and_timestamp() -> None:
     assert "DECIDER_MODEL" not in response.text
 
 
+def test_cors_preflight_is_limited_to_the_actual_methods_and_headers() -> None:
+    # SEC-3: CORS is tightened from wildcard to the real methods/headers, and
+    # credentials remain disabled.
+    client = TestClient(create_app(_settings()))
+
+    response = client.options(
+        "/api/recipes/generate",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    allow_methods = response.headers.get("access-control-allow-methods", "")
+    methods = {m.strip().upper() for m in allow_methods.split(",") if m.strip()}
+    assert methods == {"GET", "POST", "OPTIONS"}
+
+    allow_headers = response.headers.get("access-control-allow-headers", "")
+    headers = {h.strip().lower() for h in allow_headers.split(",") if h.strip()}
+    # The configured headers are advertised and the wildcard is gone. Starlette
+    # also appends the CORS-safelisted request headers (accept, accept-language,
+    # content-language) when an explicit allow-list is set; that is framework
+    # behavior, not a wildcard.
+    assert {"content-type", "authorization"} <= headers
+    assert "*" not in headers
+
+    # allow_credentials=False → the header must not advertise credentials.
+    assert response.headers.get("access-control-allow-credentials") != "true"
+
+
 def test_metrics_is_hidden_when_no_access_token_is_configured() -> None:
     client = TestClient(create_app(_settings()))
 
