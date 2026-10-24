@@ -1,0 +1,17 @@
+# Keep the build context small and free of local/dev artifacts and secrets.
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.coverage
+htmlcov/
+tests/
+requirements-dev.txt
+*.md

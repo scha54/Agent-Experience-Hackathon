@@ -247,6 +247,307 @@
         "executionId": "38357ead-1e63-4ecb-8705-e34d7243d041",
         "chatSessionId": "sess_b882b49d-4709-4a59-92ea-aba4fbd20e83",
         "timestamp": 1792766392609
+      },
+      {
+        "executionId": "ba5326f5-41ef-4ec0-81f9-41d123afdbf3",
+        "chatSessionId": "sess_a2371ee0-7dea-4ccb-a18d-7fd239183621",
+        "timestamp": 1792776796436
+      },
+      {
+        "executionId": "ba5326f5-41ef-4ec0-81f9-41d123afdbf3",
+        "chatSessionId": "sess_a2371ee0-7dea-4ccb-a18d-7fd239183621",
+        "timestamp": 1792777006725
+      }
+    ],
+    "9. Implement the three Strategy_Tools": [
+      {
+        "executionId": "ba5326f5-41ef-4ec0-81f9-41d123afdbf3",
+        "chatSessionId": "sess_a2371ee0-7dea-4ccb-a18d-7fd239183621",
+        "timestamp": 1792777006908
+      }
+    ],
+    "10.1 Wire the decision to exactly one tool": [
+      {
+        "executionId": "c2dd6ec4-e22a-4991-9285-6ab37b33c9eb",
+        "chatSessionId": "sess_456aa547-b099-49c7-8430-2cfc5ad9798c",
+        "timestamp": 1792777026571
+      },
+      {
+        "executionId": "c2dd6ec4-e22a-4991-9285-6ab37b33c9eb",
+        "chatSessionId": "sess_456aa547-b099-49c7-8430-2cfc5ad9798c",
+        "timestamp": 1792777394946
+      }
+    ],
+    "10. Implement the Strands_Agent orchestration": [
+      {
+        "executionId": "c2dd6ec4-e22a-4991-9285-6ab37b33c9eb",
+        "chatSessionId": "sess_456aa547-b099-49c7-8430-2cfc5ad9798c",
+        "timestamp": 1792777395140
+      }
+    ],
+    "11.1 Implement the FastAPI app, CORS, and body-size limits": [
+      {
+        "executionId": "a1acfbc9-7453-412f-aee4-faaef40b31e0",
+        "chatSessionId": "sess_84f39e88-c7a7-4144-bf71-e5f02155eed2",
+        "timestamp": 1792777452785
+      },
+      {
+        "executionId": "a1acfbc9-7453-412f-aee4-faaef40b31e0",
+        "chatSessionId": "sess_84f39e88-c7a7-4144-bf71-e5f02155eed2",
+        "timestamp": 1792778309345
+      }
+    ],
+    "11.2 Implement /health and /api/metrics/summary": [
+      {
+        "executionId": "47716472-9fbb-4bd8-81a8-9c3eb9f86554",
+        "chatSessionId": "sess_f42a0d9c-19d0-4666-9727-968fef25f591",
+        "timestamp": 1792778671092
+      },
+      {
+        "executionId": "47716472-9fbb-4bd8-81a8-9c3eb9f86554",
+        "chatSessionId": "sess_f42a0d9c-19d0-4666-9727-968fef25f591",
+        "timestamp": 1792778805060
+      }
+    ],
+    "11.3 Implement /api/recipes/generate and /regenerate": [
+      {
+        "executionId": "653bc3c0-820c-4a49-9ee0-2c3a36bbfb6a",
+        "chatSessionId": "sess_a581cbe0-4bde-496f-b5fe-611ff316f0a7",
+        "timestamp": 1792778856522
+      },
+      {
+        "executionId": "653bc3c0-820c-4a49-9ee0-2c3a36bbfb6a",
+        "chatSessionId": "sess_a581cbe0-4bde-496f-b5fe-611ff316f0a7",
+        "timestamp": 1792779104686
+      }
+    ],
+    "11. Implement the Backend_API endpoints and middleware": [
+      {
+        "executionId": "653bc3c0-820c-4a49-9ee0-2c3a36bbfb6a",
+        "chatSessionId": "sess_a581cbe0-4bde-496f-b5fe-611ff316f0a7",
+        "timestamp": 1792779104791
+      }
+    ],
+    "12. Checkpoint - Ensure all backend tests pass": [
+      {
+        "executionId": "5f822c31-4918-48cc-8cdc-24c4d54a46e0",
+        "chatSessionId": "sess_c59148a9-7d27-4b30-8f79-0f76573a6766",
+        "timestamp": 1792779206510
+      },
+      {
+        "executionId": "5f822c31-4918-48cc-8cdc-24c4d54a46e0",
+        "chatSessionId": "sess_c59148a9-7d27-4b30-8f79-0f76573a6766",
+        "timestamp": 1792779271943
+      }
+    ],
+    "13.1 Scaffold React + TS + Vite app with typed API client": [
+      {
+        "executionId": "7804efcc-a06f-412b-bdf6-865984249edd",
+        "chatSessionId": "sess_3d35a27d-e944-421a-902c-50eca59e7ddb",
+        "timestamp": 1792779838136
+      },
+      {
+        "executionId": "7804efcc-a06f-412b-bdf6-865984249edd",
+        "chatSessionId": "sess_3d35a27d-e944-421a-902c-50eca59e7ddb",
+        "timestamp": 1792780077774
+      }
+    ],
+    "13.2 Implement routing and shared layout with accessibility baseline": [
+      {
+        "executionId": "8d472188-aa34-48c9-a373-8a35707cda3c",
+        "chatSessionId": "sess_a7260ef4-e423-4587-9850-05a8aa7c4118",
+        "timestamp": 1792780096068
+      },
+      {
+        "executionId": "8d472188-aa34-48c9-a373-8a35707cda3c",
+        "chatSessionId": "sess_a7260ef4-e423-4587-9850-05a8aa7c4118",
+        "timestamp": 1792780296360
+      }
+    ],
+    "13. Implement the Frontend_App shell and API client": [
+      {
+        "executionId": "8d472188-aa34-48c9-a373-8a35707cda3c",
+        "chatSessionId": "sess_a7260ef4-e423-4587-9850-05a8aa7c4118",
+        "timestamp": 1792780296634
+      }
+    ],
+    "14.1 Implement Landing view": [
+      {
+        "executionId": "e6ed3cd2-ad01-489d-9a43-6eab65ebe599",
+        "chatSessionId": "sess_b6f213e5-a0dc-4446-976d-5993f0cdd450",
+        "timestamp": 1792780344765
+      },
+      {
+        "executionId": "e6ed3cd2-ad01-489d-9a43-6eab65ebe599",
+        "chatSessionId": "sess_b6f213e5-a0dc-4446-976d-5993f0cdd450",
+        "timestamp": 1792780486926
+      }
+    ],
+    "14.2 Implement Selection view": [
+      {
+        "executionId": "2ff9add3-5a7d-4bf1-b605-7f35c3ccc006",
+        "chatSessionId": "sess_f24c4a23-ba61-466a-8f97-892935bdc224",
+        "timestamp": 1792780559260
+      },
+      {
+        "executionId": "2ff9add3-5a7d-4bf1-b605-7f35c3ccc006",
+        "chatSessionId": "sess_f24c4a23-ba61-466a-8f97-892935bdc224",
+        "timestamp": 1792781660566
+      }
+    ],
+    "14.3 Implement Loading view with honesty": [
+      {
+        "executionId": "29b11655-1a1f-46b1-aff2-cd39dde31243",
+        "chatSessionId": "sess_0595d9fd-a2de-4159-9853-8e9b80dfd05e",
+        "timestamp": 1792781832088
+      },
+      {
+        "executionId": "29b11655-1a1f-46b1-aff2-cd39dde31243",
+        "chatSessionId": "sess_0595d9fd-a2de-4159-9853-8e9b80dfd05e",
+        "timestamp": 1792783314991
+      }
+    ],
+    "14.4 Implement Result view": [
+      {
+        "executionId": "6a8d5598-f7a4-45ef-8bc7-0164a9d4da67",
+        "chatSessionId": "sess_0c86c91d-cf73-4c9c-8756-cb5afebb97fc",
+        "timestamp": 1792810479066
+      },
+      {
+        "executionId": "6a8d5598-f7a4-45ef-8bc7-0164a9d4da67",
+        "chatSessionId": "sess_0c86c91d-cf73-4c9c-8756-cb5afebb97fc",
+        "timestamp": 1792810700221
+      }
+    ],
+    "14.5 Implement Error states and empty states": [
+      {
+        "executionId": "0b61bd7b-abf3-49f7-b5c7-0fe7a3bc1835",
+        "chatSessionId": "sess_a3642994-6331-400a-9557-eeef6ed99df1",
+        "timestamp": 1792810718352
+      },
+      {
+        "executionId": "0b61bd7b-abf3-49f7-b5c7-0fe7a3bc1835",
+        "chatSessionId": "sess_a3642994-6331-400a-9557-eeef6ed99df1",
+        "timestamp": 1792811038600
+      }
+    ],
+    "14.6 Implement local persistence of favorites and preferences": [
+      {
+        "executionId": "71b9dc59-1a3a-4764-9a01-3d920c5e39ba",
+        "chatSessionId": "sess_e8cd50e7-1184-4550-8f23-319a1e38133b",
+        "timestamp": 1792811059618
+      },
+      {
+        "executionId": "71b9dc59-1a3a-4764-9a01-3d920c5e39ba",
+        "chatSessionId": "sess_e8cd50e7-1184-4550-8f23-319a1e38133b",
+        "timestamp": 1792811265555
+      }
+    ],
+    "14. Implement the Frontend_App views": [
+      {
+        "executionId": "71b9dc59-1a3a-4764-9a01-3d920c5e39ba",
+        "chatSessionId": "sess_e8cd50e7-1184-4550-8f23-319a1e38133b",
+        "timestamp": 1792811265742
+      }
+    ],
+    "15.1 Make the pattern standalone with adaptation example": [
+      {
+        "executionId": "1f3d6dcc-600b-422c-81b0-d79271b04885",
+        "chatSessionId": "sess_124267d3-e24a-4dcc-b146-9e08149353fb",
+        "timestamp": 1792820345283
+      },
+      {
+        "executionId": "1f3d6dcc-600b-422c-81b0-d79271b04885",
+        "chatSessionId": "sess_124267d3-e24a-4dcc-b146-9e08149353fb",
+        "timestamp": 1792820718205
+      }
+    ],
+    "15. Package the reusable Decision_Pattern_Deliverable": [
+      {
+        "executionId": "1f3d6dcc-600b-422c-81b0-d79271b04885",
+        "chatSessionId": "sess_124267d3-e24a-4dcc-b146-9e08149353fb",
+        "timestamp": 1792820718345
+      }
+    ],
+    "16.1 Implement benchmark_decisions.py": [
+      {
+        "executionId": "1d1dac04-5ea2-4d22-8d6a-cab8fb5c5dd8",
+        "chatSessionId": "sess_b4720df1-eaaa-44a7-829c-6cd97bab3f07",
+        "timestamp": 1792820756960
+      },
+      {
+        "executionId": "1d1dac04-5ea2-4d22-8d6a-cab8fb5c5dd8",
+        "chatSessionId": "sess_b4720df1-eaaa-44a7-829c-6cd97bab3f07",
+        "timestamp": 1792820923553
+      }
+    ],
+    "16. Implement the Benchmark_Script": [
+      {
+        "executionId": "1d1dac04-5ea2-4d22-8d6a-cab8fb5c5dd8",
+        "chatSessionId": "sess_b4720df1-eaaa-44a7-829c-6cd97bab3f07",
+        "timestamp": 1792820923762
+      }
+    ],
+    "17.1 Define the CDK/SAM stack": [
+      {
+        "executionId": "26e9a8cc-513e-4d09-9bda-88d830168e59",
+        "chatSessionId": "sess_a58405fc-be37-4798-a159-601111452652",
+        "timestamp": 1792820989410
+      },
+      {
+        "executionId": "26e9a8cc-513e-4d09-9bda-88d830168e59",
+        "chatSessionId": "sess_a58405fc-be37-4798-a159-601111452652",
+        "timestamp": 1792821548447
+      }
+    ],
+    "17. Implement AWS infrastructure as code": [
+      {
+        "executionId": "26e9a8cc-513e-4d09-9bda-88d830168e59",
+        "chatSessionId": "sess_a58405fc-be37-4798-a159-601111452652",
+        "timestamp": 1792821548733
+      }
+    ],
+    "18.1 Write deployment and developer documentation": [
+      {
+        "executionId": "40fde839-7372-403e-a2e4-bec3f2b8b360",
+        "chatSessionId": "sess_c7fbc45d-c9e9-4dff-8e0e-1e50bcbcce7d",
+        "timestamp": 1792821599657
+      },
+      {
+        "executionId": "40fde839-7372-403e-a2e4-bec3f2b8b360",
+        "chatSessionId": "sess_c7fbc45d-c9e9-4dff-8e0e-1e50bcbcce7d",
+        "timestamp": 1792821856850
+      }
+    ],
+    "18.2 Write the demo scenario": [
+      {
+        "executionId": "40fde839-7372-403e-a2e4-bec3f2b8b360",
+        "chatSessionId": "sess_c7fbc45d-c9e9-4dff-8e0e-1e50bcbcce7d",
+        "timestamp": 1792821604790
+      },
+      {
+        "executionId": "40fde839-7372-403e-a2e4-bec3f2b8b360",
+        "chatSessionId": "sess_c7fbc45d-c9e9-4dff-8e0e-1e50bcbcce7d",
+        "timestamp": 1792821861734
+      }
+    ],
+    "18. Write project documentation and demo scenario": [
+      {
+        "executionId": "40fde839-7372-403e-a2e4-bec3f2b8b360",
+        "chatSessionId": "sess_c7fbc45d-c9e9-4dff-8e0e-1e50bcbcce7d",
+        "timestamp": 1792821857162
+      }
+    ],
+    "19. Final checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "a5eeebc9-a81c-4cc8-8342-e3d0f923bb5a",
+        "chatSessionId": "sess_44b5f417-3640-44df-8e44-964d91aa25eb",
+        "timestamp": 1792821987911
+      },
+      {
+        "executionId": "a5eeebc9-a81c-4cc8-8342-e3d0f923bb5a",
+        "chatSessionId": "sess_44b5f417-3640-44df-8e44-964d91aa25eb",
+        "timestamp": 1792822124265
       }
     ]
   }

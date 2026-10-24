@@ -133,7 +133,7 @@ v2 and Hypothesis; the frontend is React + TypeScript + Vite; infrastructure is 
 - [x] 8. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 9. Implement the three Strategy_Tools
+- [x] 9. Implement the three Strategy_Tools
   - [x] 9.1 Implement quick_recipe tool
     - Write `tools/quick_recipe.py` as a Strands `@tool` enforcing combined prep+cook ≤ available time, exclusions respected, equipment limited to request, `servings` equals request, non-empty quantities, all request ingredients `is_available=true`, and extra ingredients capped at `QUICK_MAX_EXTRA_INGREDIENTS` (5); delegate content to the Bedrock_Generator
     - _Requirements: 6.1, 6.2, 6.3_
@@ -142,7 +142,7 @@ v2 and Hypothesis; the frontend is React + TypeScript + Vite; infrastructure is 
     - Write `tools/leftover_remix.py` marking every request ingredient `is_available=true`, capping extra ingredients at `LEFTOVER_MAX_EXTRA_INGREDIENTS` (3), recording substitutions only for items absent from the request (7.2), enforcing a non-empty `reasoning_summary` ≤ `MAX_EXPLANATION_CHARS` that references ≥1 request ingredient and regenerating otherwise (7.4), and recording a request-only creative twist in `bonus_challenge` when present (7.5)
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-  - [ ] 9.3 Implement no_cook_snack tool
+  - [x] 9.3 Implement no_cook_snack tool
     - Write `tools/no_cook_snack.py` forcing `cook_time_minutes == 0` with no heat step, `prep_time_minutes` ≤ `NO_COOK_MAX_PREP_MINUTES` (10), equipment limited to request, and exclusions respected; re-assert hard invariants after validation
     - _Requirements: 8.1, 8.2, 8.3_
 
@@ -155,8 +155,8 @@ v2 and Hypothesis; the frontend is React + TypeScript + Vite; infrastructure is 
     - Test quick_recipe time/extra-ingredient caps, leftover_remix substitution/reasoning/bonus invariants, and no_cook equipment/exclusion handling with a mocked generator
     - _Requirements: 6.1, 6.3, 7.2, 7.4, 7.5, 8.3_
 
-- [ ] 10. Implement the Strands_Agent orchestration
-  - [ ] 10.1 Wire the decision to exactly one tool
+- [x] 10. Implement the Strands_Agent orchestration
+  - [x] 10.1 Wire the decision to exactly one tool
     - Write `agent/orchestrator.py` with `TOOL_BY_STRATEGY` mapping each Strategy to exactly one tool, invoking exactly one tool per request, and assembling the `GenerateResponse` (recipe, selected_strategy, decision metadata, latencies, request_id, optional confidence, mock indicator)
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
 
@@ -170,16 +170,16 @@ v2 and Hypothesis; the frontend is React + TypeScript + Vite; infrastructure is 
     - **Validates: Requirements 4.4, 12.2, 12.3, 34.3**
     - Tag comment: `Feature: cravequest, Property 3`
 
-- [ ] 11. Implement the Backend_API endpoints and middleware
-  - [ ] 11.1 Implement the FastAPI app, CORS, and body-size limits
+- [x] 11. Implement the Backend_API endpoints and middleware
+  - [x] 11.1 Implement the FastAPI app, CORS, and body-size limits
     - Write `app/main.py` wiring routers, env-driven CORS origins, the global 256 KB and per-endpoint 64 KB body caps (413), per-session request limit, and safe error handlers that exclude stack traces/credentials/prompts and do not persist rejected input or personal data
     - _Requirements: 1.7, 15.1, 15.2, 15.3, 26.4, 26.5, 26.6, 26.8, 27.3, 27.4_
 
-  - [ ] 11.2 Implement /health and /api/metrics/summary
+  - [x] 11.2 Implement /health and /api/metrics/summary
     - Write `api/health.py` returning only status + timestamp (no secrets/config) and `api/metrics.py` returning aggregated decision counts, source distribution, and latency summaries, protected by a credential check or excluded from public deploy
     - _Requirements: 11.1, 11.2, 14.1, 14.2, 14.3_
 
-  - [ ] 11.3 Implement /api/recipes/generate and /regenerate
+  - [x] 11.3 Implement /api/recipes/generate and /regenerate
     - Write `api/recipes.py` calling the orchestrator with pre-generation safety and returning recipe + decision metadata on generate; on regenerate return a new recipe for the same strategy, changing strategy only on explicit user request or a new decision; reject malformed bodies with field-identifying errors without generating
     - _Requirements: 12.1, 12.4, 12.5, 13.1, 13.2, 13.3, 13.4_
 
@@ -187,40 +187,40 @@ v2 and Hypothesis; the frontend is React + TypeScript + Vite; infrastructure is 
     - With Decider and Bedrock mocked, assert generate/regenerate responses carry recipe, selected_strategy, decision_source, latencies, and request_id; invalid bodies yield field-identifying 422 without generating; /health exposes only status+timestamp; /api/metrics/summary rejects unauthenticated access
     - _Requirements: 11.1, 11.2, 12.1, 12.5, 13.1, 13.4, 14.1, 14.3_
 
-- [ ] 12. Checkpoint - Ensure all backend tests pass
+- [x] 12. Checkpoint - Ensure all backend tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. Implement the Frontend_App shell and API client
-  - [ ] 13.1 Scaffold React + TS + Vite app with typed API client
+- [x] 13. Implement the Frontend_App shell and API client
+  - [x] 13.1 Scaffold React + TS + Vite app with typed API client
     - Create the `frontend/` Vite + React + TypeScript project; write a typed API client for generate/regenerate with request/response types mirroring the backend models; no AWS credentials in source or config
     - _Requirements: 17.5, 26.2_
 
-  - [ ] 13.2 Implement routing and shared layout with accessibility baseline
+  - [x] 13.2 Implement routing and shared layout with accessibility baseline
     - Implement view routing (Landing/Selection/Loading/Result/Error), keyboard operability, visible focus indicators, and WCAG 2.1 AA contrast tokens (warm cream background, fresh-food accents, rounded cards)
     - _Requirements: 21.1, 21.2, 21.3_
 
-- [ ] 14. Implement the Frontend_App views
-  - [ ] 14.1 Implement Landing view
+- [x] 14. Implement the Frontend_App views
+  - [x] 14.1 Implement Landing view
     - Render logo, tagline, short explanation, and a primary CTA labeled exactly "Find my next bite" that navigates to the selection view
     - _Requirements: 16.1, 16.2_
 
-  - [ ] 14.2 Implement Selection view
+  - [x] 14.2 Implement Selection view
     - Add/remove ingredient chips capped at the max list count; provide time, energy, craving, equipment, budget, and servings controls; display dietary preference and allergen fields prominently with review before submit; submit to `/api/recipes/generate`
     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
 
-  - [ ] 14.3 Implement Loading view with honesty
+  - [x] 14.3 Implement Loading view with honesty
     - Show friendly loading messages and loading indicators; never claim genuine Decider_2B inference for a mock or fallback result
     - _Requirements: 18.1, 18.2, 21.4_
 
-  - [ ] 14.4 Implement Result view
+  - [x] 14.4 Implement Result view
     - Display title, quest title, total time, difficulty, servings, strategy badge, available vs additional ingredient groups, numbered steps, quest description, bonus challenge, match explanation; provide regenerate, save/favorite, and start-cooking/mark-complete controls; advise verifying product labels and avoid allergy-safe claims
     - _Requirements: 19.1, 19.2, 19.3, 19.4, 25.1_
 
-  - [ ] 14.5 Implement Error states and empty states
+  - [x] 14.5 Implement Error states and empty states
     - Map missing-ingredients (client-side, no request), invalid-input, backend-unavailable, model-access-not-configured, generation-timeout, and invalid-recipe to distinct messages that retain entered input; render empty states when no content
     - _Requirements: 20.1, 20.2, 20.3, 20.4, 20.5, 20.6, 21.4_
 
-  - [ ] 14.6 Implement local persistence of favorites and preferences
+  - [x] 14.6 Implement local persistence of favorites and preferences
     - Persist favorites (capped at the max favorites count, default 50) and lightweight preferences to browser local storage; load on return; default to empty state without error when storage is empty
     - _Requirements: 22.1, 22.2, 22.3, 22.4, 22.5_
 
@@ -228,8 +228,8 @@ v2 and Hypothesis; the frontend is React + TypeScript + Vite; infrastructure is 
     - Test the exact CTA label and navigation, ingredient chip cap, error-state mapping with input retention, and local-storage load/empty-state behavior
     - _Requirements: 16.1, 16.2, 17.2, 20.1, 22.5_
 
-- [ ] 15. Package the reusable Decision_Pattern_Deliverable
-  - [ ] 15.1 Make the pattern standalone with adaptation example
+- [x] 15. Package the reusable Decision_Pattern_Deliverable
+  - [x] 15.1 Make the pattern standalone with adaptation example
     - Ensure `decision_patterns/cooking_strategy.py` depends only on the `DeciderAdapter` interface and a caller-supplied option-to-handler map (no Strategy_Tools/Bedrock/FastAPI coupling); add a minimal adaptation example runnable with a trivial handler map; carry the `#tool-selection` tag
     - _Requirements: 33.1, 33.3, 33.4_
 
@@ -241,13 +241,13 @@ v2 and Hypothesis; the frontend is React + TypeScript + Vite; infrastructure is 
     - Document the decision problem, typed choice question, options and meanings, `MealContext` schema, Decider_2B API/integration, agent wiring, option-to-tool mapping, error/fallback handling, test instructions, keyword-filter limitations, and a minimal adaptation example; include `#tool-selection`
     - _Requirements: 25.4, 33.2, 33.3_
 
-- [ ] 16. Implement the Benchmark_Script
-  - [ ] 16.1 Implement benchmark_decisions.py
+- [x] 16. Implement the Benchmark_Script
+  - [x] 16.1 Implement benchmark_decisions.py
     - Write `scripts/benchmark_decisions.py` comparing Decider_2B strategy selection against a named baseline using identical inputs, a configurable sample size (default 100 per subject), reporting sample count, median, and p95 per measurement
     - _Requirements: 31.1, 31.2, 31.3_
 
-- [ ] 17. Implement AWS infrastructure as code
-  - [ ] 17.1 Define the CDK/SAM stack
+- [x] 17. Implement AWS infrastructure as code
+  - [x] 17.1 Define the CDK/SAM stack
     - Define Amplify hosting for the frontend, API Gateway fronting the Backend_API, a container service (ECS Fargate / App Runner) for Backend_API + Decider_2B server, CloudWatch log groups/metrics, least-privilege IAM (no wildcard/admin actions; Bedrock Converse + own-log-group writes only), and stack outputs for the frontend URL and API URL
     - _Requirements: 26.1, 28.1, 28.2, 28.4, 28.5, 28.6, 28.8, 28.9_
 
@@ -255,16 +255,16 @@ v2 and Hypothesis; the frontend is React + TypeScript + Vite; infrastructure is 
     - Assert the stack synthesizes and asserts key resources (Amplify, API Gateway, container service, CloudWatch) and least-privilege IAM (no wildcard actions) and defines both stack outputs
     - _Requirements: 26.1, 28.9_
 
-- [ ] 18. Write project documentation and demo scenario
-  - [ ]* 18.1 Write deployment and developer documentation
+- [x] 18. Write project documentation and demo scenario
+  - [x]* 18.1 Write deployment and developer documentation
     - Write a deployment guide, env var reference (every config-table var with defaults/meaning), local dev instructions (including `DECIDER_MODE=mock`), credential setup, Bedrock model-access instructions, deploy/teardown commands, troubleshooting, Lambda-vs-container rationale, budget-monitoring checklist, and paid-resource inventory that never claims free deployment
     - _Requirements: 27.5, 27.6, 28.4, 29.1, 31.4_
 
-  - [ ]* 18.2 Write the demo scenario
+  - [x]* 18.2 Write the demo scenario
     - Document a scripted demo completable in 180 seconds or less with exact inputs, covering the honest loading state and the decision metadata (genuine vs fallback/mock)
     - _Requirements: 32.1_
 
-- [ ] 19. Final checkpoint - Ensure all tests pass
+- [x] 19. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

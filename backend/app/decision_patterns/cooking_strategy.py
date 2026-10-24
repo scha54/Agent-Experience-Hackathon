@@ -1,320 +1,317 @@
-"""Decision_Module — reusable cooking-strategy tool selection (#tool-selection).
+"""Decision_Module — reusable #tool-selection decision pattern.
 
-This module owns strategy selection for CraveQuest. It is the reusable
-*decision pattern*: given a decision situation and a fixed set of labeled
-options, it asks a :class:`~app.services.decider_adapter.DeciderAdapter` to make
-a genuine choice, validates that choice against the allowed option set, applies
-the configurable confidence threshold, and — only when genuine inference fails —
-applies a deterministic, explicitly-documented fallback rule.
+This module is the standalone, reusable *decision pattern* that CraveQuest calls
+its ``Decision_Module``. Given a decision situation (a free-text ``state``), a
+fixed set of labeled ``options``, and a caller-supplied **option-to-handler
+map**, it asks a :class:`~app.services.decider_adapter.DeciderAdapter` to make a
+genuine choice over exactly those options, validates the choice against the
+allowed set, applies a configurable confidence threshold for transparency, and —
+only when genuine inference fails — applies a caller-supplied deterministic
+fallback. It then resolves the chosen option key to its handler via the
+option-to-handler map, so the caller can act on the decision.
 
-Design intent (Req 33 reusability): the core routine
-:func:`select_strategy` depends ONLY on the ``DeciderAdapter`` interface plus
-caller-supplied values (the option set, the decision timeout, the confidence
-threshold, and a small structural ``FallbackContext``). It does not import the
-``Strategy_Tools``, the ``Bedrock_Generator``, or FastAPI, so the same pattern
-can be lifted into another project by swapping the option set and the fallback
-rule. The project-specific wiring lives in
-:func:`select_cooking_strategy`, which binds CraveQuest's config, adapter, and
-:class:`~app.services.metrics_collector.MetricsCollector`.
+Standalone by design (Req 33.1, 33.4): this module depends ONLY on the
+:class:`~app.services.decider_adapter.DeciderAdapter` interface (plus the
+``DeciderError`` / ``DecisionResult`` that make up that contract) and on
+caller-supplied values — the option set, the option-to-handler map, the decision
+timeout, the confidence threshold, the fallback rule, and an optional metrics
+hook. It does NOT import the ``Strategy_Tools``, the ``Bedrock_Generator``, the
+``Frontend_App``, FastAPI, the CraveQuest config, or the CraveQuest
+``Metrics_Collector``. Nothing here is CraveQuest-specific, so the same pattern
+can be lifted into another project by supplying a different option set, handler
+map, and fallback rule. The runnable ``__main__`` adaptation example at the
+bottom demonstrates exactly that with a mock adapter and a trivial handler map.
 
-Behavior (Req 2, 3, 4):
+The CraveQuest-specific wiring (the three cooking strategies, the meal-decision
+fallback rule, and the binding of CraveQuest config + ``Metrics_Collector``)
+lives in :mod:`app.agent.cooking_decision`, which calls this generic pattern.
 
-* On a successful, in-set inference the result carries
-  ``source=DecisionSource.DECIDER_2B`` (Req 2.7), the genuine ``confidence``
-  (Req 2.5), and ``below_threshold=True`` when that confidence is *strictly*
-  below the configured threshold (Req 3.4) — recorded for transparency but
-  NEVER forcing a fallback (Req 4.5).
+Behavior:
+
+* On a successful, in-set inference the decision keeps
+  ``source="decider_2b"`` (mirrored from the adapter's ``DecisionResult``), the
+  genuine ``confidence``, and ``below_threshold=True`` when that confidence is
+  *strictly* below the configured threshold — recorded for transparency but
+  NEVER forcing a fallback.
 * Genuine inference "fails" only on a timeout, a transport error, or an
   out-of-set answer (the adapter raises
-  :class:`~app.services.decider_adapter.DeciderError`, Req 2.4). Only then does
-  the module apply the deterministic ``Fallback_Strategy`` with
-  ``source=DecisionSource.FALLBACK`` (Req 4.1, 4.2) and record a decision
-  *failure* via the ``Metrics_Collector`` (Req 4.3) — never counting it as a
-  successful inference.
+  :class:`~app.services.decider_adapter.DeciderError`). Only then does the
+  pattern apply the caller-supplied deterministic ``fallback`` with
+  ``source="fallback"`` and record a decision *failure* through the metrics hook
+  — never counting it as a successful inference.
 
-Requirements: 2.2, 2.4, 2.7, 2.8, 3.1, 3.4, 4.1, 4.2, 4.3, 4.5
+Pattern tag: #tool-selection
 """
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import Callable, Generic, Mapping, Protocol, TypeVar, runtime_checkable
 
-from app.models.enums import DecisionSource, Strategy
 from app.services.decider_adapter import (
     DeciderAdapter,
     DeciderError,
     DecisionResult,
 )
-from app.services.metrics_collector import MetricsCollector, get_metrics_collector
 
 __all__ = [
-    "FallbackContext",
-    "STRATEGY_OPTIONS",
-    "LOW_ENERGY_TIME_THRESHOLD",
-    "MANY_INGREDIENTS_THRESHOLD",
-    "build_decision_state",
-    "fallback_strategy",
-    "select_strategy",
-    "select_cooking_strategy",
+    "SOURCE_DECIDER",
+    "SOURCE_FALLBACK",
+    "MetricsHook",
+    "PatternDecision",
+    "select_option",
+    "example_main",
 ]
 
-
-# --- Fallback rule thresholds -------------------------------------------------
-#
-# These two thresholds parameterize the documented deterministic fallback rule
-# from design.md. They are NOT part of the env config table, so they live here
-# as named, documented constants (and as default arguments of
-# :func:`fallback_strategy`) rather than magic numbers buried in a conditional.
-
-#: In the fallback rule, "low energy + short time" routes to a no-cook snack
-#: when the available time is strictly below this many minutes.
-LOW_ENERGY_TIME_THRESHOLD = 20
-
-#: In the fallback rule, "low budget + many ingredients" routes to a leftover
-#: remix when at least this many ingredients are on hand.
-MANY_INGREDIENTS_THRESHOLD = 4
+# The two decision sources this pattern reports, as plain strings so the module
+# stays free of any project-specific enum. CraveQuest maps these to its
+# ``DecisionSource`` enum in its own wiring; another project may map them to
+# whatever it likes.
+SOURCE_DECIDER = "decider_2b"
+SOURCE_FALLBACK = "fallback"
 
 
-# The exhaustive set of allowed cooking-strategy options, as the
-# ``option-key -> meaning`` mapping the DeciderAdapter chooses over. The keys are
-# exactly the :class:`Strategy` enum values (Req 2.1). The meanings are the
-# criteria passed to the decider's ``choice`` question.
-STRATEGY_OPTIONS: dict[str, str] = {
-    Strategy.QUICK_RECIPE.value: (
-        "User can cook and has enough time/energy for a short cooked meal."
-    ),
-    Strategy.LEFTOVER_REMIX.value: (
-        "User wants to combine existing ingredients with minimal extra purchases."
-    ),
-    Strategy.NO_COOK_SNACK.value: (
-        "User cannot or will not cook; needs a no-heat option."
-    ),
-}
+# The handler type is whatever the caller stores in its option-to-handler map:
+# a callable tool, a class, a string label, anything. The pattern treats a
+# handler as an opaque value it looks up and returns; it never calls it, so the
+# caller stays in full control of how a decision is acted upon.
+H = TypeVar("H")
 
 
 @runtime_checkable
-class FallbackContext(Protocol):
-    """The minimal meal-decision inputs the deterministic fallback rule reads.
+class MetricsHook(Protocol):
+    """Minimal structural metrics sink the pattern records each decision into.
 
-    Declared structurally (a ``Protocol``) so the decision pattern stays
-    decoupled from any concrete request model (Req 33 reusability). CraveQuest's
-    :class:`~app.models.requests.GenerateRequest` satisfies this protocol as-is,
-    but any object exposing these attributes works — which keeps
-    :func:`fallback_strategy` independent of the HTTP/request layer.
+    Declared structurally (a ``Protocol``) so the pattern has NO dependency on
+    any concrete metrics implementation (Req 33.4). CraveQuest's
+    ``Metrics_Collector`` can be adapted to this shape, but a no-op, a test spy,
+    or any object exposing :meth:`record_decision` works just as well. When no
+    hook is supplied, the pattern records nothing.
+    """
+
+    def record_decision(
+        self, *, option: str, source: str, decision_latency_ms: int, failed: bool
+    ) -> None:
+        """Record one decision-stage event.
+
+        Args:
+            option: The chosen option key (always one of the allowed options).
+            source: ``"decider_2b"`` for a genuine inference or ``"fallback"``
+                for the deterministic fallback.
+            decision_latency_ms: The decision-stage latency in non-negative
+                integer milliseconds.
+            failed: ``True`` when genuine inference failed and the deterministic
+                fallback was applied, so a fallback is never counted as a
+                successful inference.
+        """
+        ...
+
+
+@dataclass
+class PatternDecision(Generic[H]):
+    """The outcome of the #tool-selection pattern for a single decision.
+
+    Carries both the raw decision metadata and the resolved ``handler`` the
+    caller should act on, so the pattern does the full "choose an option, then
+    route it to its handler" job without ever invoking the handler itself.
 
     Attributes:
-        cooking_preference: One of ``"cook"``, ``"no_cook"``, or ``"surprise"``.
-        energy_level: One of ``"low"``, ``"medium"``, or ``"high"``.
-        available_time_minutes: Minutes the user has available, a positive int.
-        budget: One of ``"low"``, ``"medium"``, or ``"flexible"``.
-        ingredients: The user's on-hand ingredients.
+        option: The chosen option key — always exactly one of the supplied
+            ``options``.
+        handler: The handler the option-to-handler map associates with
+            ``option``. Opaque to the pattern; the caller decides what to do
+            with it.
+        source: ``"decider_2b"`` for a genuine inference or ``"fallback"`` for
+            the deterministic fallback.
+        decision_latency_ms: The decision-stage latency in non-negative integer
+            milliseconds (``0`` for a fallback, whose rule is instantaneous).
+        confidence: The genuine model confidence in ``[0.0, 1.0]`` when
+            available, else ``None`` (always ``None`` for a fallback or mock).
+        is_mock: ``True`` only for an explicitly labeled mock result, so a mock
+            decision is never presented as genuine inference.
+        below_threshold: ``True`` when a genuine ``confidence`` is strictly below
+            the configured threshold. Recorded for transparency; it never forces
+            a fallback.
     """
 
-    cooking_preference: str
-    energy_level: str
-    available_time_minutes: int
-    budget: str
-    ingredients: list[str]
+    option: str
+    handler: H
+    source: str
+    decision_latency_ms: int
+    confidence: float | None = None
+    is_mock: bool = False
+    below_threshold: bool = False
 
 
-def fallback_strategy(
-    context: FallbackContext,
-    *,
-    low_energy_time_threshold: int = LOW_ENERGY_TIME_THRESHOLD,
-    many_ingredients_threshold: int = MANY_INGREDIENTS_THRESHOLD,
-) -> Strategy:
-    """Apply the deterministic ``Fallback_Strategy`` rule (design.md, Req 4.1).
-
-    This is the explicitly-documented deterministic rule used *only* when genuine
-    ``Decider_2B`` inference fails. It is intentionally NOT the normal decision
-    path (the normal path is Decider_2B inference, Req 2.8). The rule, verbatim
-    from the design, is::
-
-        if cooking_preference == "no_cook":                 -> NO_COOK_SNACK
-        elif energy_level == "low"
-             and available_time_minutes < LOW_ENERGY_TIME_THRESHOLD:
-                                                             -> NO_COOK_SNACK
-        elif budget == "low"
-             and len(ingredients) >= MANY_INGREDIENTS_THRESHOLD:
-                                                             -> LEFTOVER_REMIX
-        else:                                                -> QUICK_RECIPE
-
-    Args:
-        context: The meal-decision inputs (see :class:`FallbackContext`).
-        low_energy_time_threshold: Minutes below which low energy routes to a
-            no-cook snack. Defaults to :data:`LOW_ENERGY_TIME_THRESHOLD`.
-        many_ingredients_threshold: Ingredient count at or above which a low
-            budget routes to a leftover remix. Defaults to
-            :data:`MANY_INGREDIENTS_THRESHOLD`.
-
-    Returns:
-        Exactly one :class:`Strategy` — always an in-set value.
-    """
-    if context.cooking_preference == "no_cook":
-        return Strategy.NO_COOK_SNACK
-    if (
-        context.energy_level == "low"
-        and context.available_time_minutes < low_energy_time_threshold
-    ):
-        return Strategy.NO_COOK_SNACK
-    if (
-        context.budget == "low"
-        and len(context.ingredients) >= many_ingredients_threshold
-    ):
-        return Strategy.LEFTOVER_REMIX
-    return Strategy.QUICK_RECIPE
+def _noop_record(
+    *, option: str, source: str, decision_latency_ms: int, failed: bool
+) -> None:
+    """Default metrics hook: record nothing (keeps the pattern dependency-free)."""
 
 
-def build_decision_state(context: FallbackContext) -> str:
-    """Render the meal-decision situation as the text ``state`` for the decider.
-
-    The decider reasons over this free-text ``state`` together with the fixed
-    option criteria. Only the coarse decision-relevant signals are included; no
-    personal data is embedded, and the text is safe to log at the decision stage.
-
-    Args:
-        context: The meal-decision inputs (see :class:`FallbackContext`).
-
-    Returns:
-        A concise one-line description of the cooking situation.
-    """
-    return (
-        "Cooking situation: "
-        f"cooking_preference={context.cooking_preference}, "
-        f"energy_level={context.energy_level}, "
-        f"available_time_minutes={context.available_time_minutes}, "
-        f"budget={context.budget}, "
-        f"ingredient_count={len(context.ingredients)}."
-    )
-
-
-def select_strategy(
-    context: FallbackContext,
+def select_option(
+    state: str,
     adapter: DeciderAdapter,
+    handlers: Mapping[str, H],
     *,
-    options: dict[str, str] = STRATEGY_OPTIONS,
+    options: Mapping[str, str] | None = None,
+    fallback: Callable[[], str],
     timeout_ms: int,
     confidence_threshold: float,
-    metrics: MetricsCollector | None = None,
-) -> DecisionResult:
-    """Select exactly one cooking :class:`Strategy` for ``context`` (Req 2.2).
+    metrics: MetricsHook | Callable[..., None] | None = None,
+) -> PatternDecision[H]:
+    """Choose exactly one option for ``state`` and resolve it to its handler.
 
-    This is the reusable core of the ``#tool-selection`` pattern. It calls the
-    supplied ``adapter`` to make a genuine choice over exactly ``options``, then:
+    This is the reusable core of the ``#tool-selection`` pattern. It asks
+    ``adapter`` to make a genuine choice over exactly ``options`` (defaulting to
+    the keys of ``handlers`` when ``options`` is omitted), then:
 
     * **On success** (the adapter returns an in-set choice): keeps
-      ``source=DecisionSource.DECIDER_2B`` (Req 2.7), validates the returned
-      strategy is one of the allowed options (Req 2.3), applies the confidence
-      threshold by setting ``below_threshold=True`` when a genuine confidence is
-      *strictly* below ``confidence_threshold`` (Req 3.4), and records a
-      successful (non-failure) decision in ``metrics``. A below-threshold
-      confidence is recorded but does NOT force a fallback (Req 4.5).
+      ``source="decider_2b"``, validates the returned option is one of the
+      allowed options, applies the confidence threshold by setting
+      ``below_threshold=True`` when a genuine confidence is *strictly* below
+      ``confidence_threshold``, records a successful (non-failure) decision
+      through ``metrics``, and resolves the option to its handler. A
+      below-threshold confidence is recorded but does NOT force a fallback.
     * **On failure** (the adapter raises
       :class:`~app.services.decider_adapter.DeciderError` for a timeout,
-      transport error, or out-of-set answer, Req 2.4): applies the deterministic
-      :func:`fallback_strategy` with ``source=DecisionSource.FALLBACK`` (Req 4.2)
-      and records a decision *failure* in ``metrics`` (Req 4.3) — never counting
-      it as a successful inference.
+      transport error, or out-of-set answer): applies the caller-supplied
+      deterministic ``fallback`` with ``source="fallback"`` and records a
+      decision *failure* through ``metrics`` — never counting it as a successful
+      inference.
 
-    As a defensive cross-check (Req 2.3), if the adapter ever returns a
-    ``DecisionResult`` whose strategy is not one of ``options``, that is treated
-    as an out-of-set failure and routed to the fallback exactly as if the adapter
-    had raised.
+    As a defensive cross-check, if the adapter ever returns a result whose option
+    is not one of ``options``, that is treated as an out-of-set failure and
+    routed to the fallback exactly as if the adapter had raised.
 
     Args:
-        context: The validated meal-decision inputs.
+        state: The decision context as text. Passed to the adapter to reason
+            over alongside the option meanings.
         adapter: The decider interface to query. Only this contract is used, so
-            the real adapter, the mock, or any test double is interchangeable.
+            a real adapter, a mock, or any test double is interchangeable.
+        handlers: The caller-supplied **option-to-handler map**: ``option-key ->
+            handler``. Its keys define the allowed options when ``options`` is
+            omitted; the chosen key is resolved against this map to produce the
+            returned handler.
         options: The exhaustive ``option-key -> meaning`` mapping to choose over.
-            Defaults to the three CraveQuest strategies.
-        timeout_ms: The decision timeout in milliseconds (Req 4.1 default 5000,
-            supplied by the caller from config).
-        confidence_threshold: The configured threshold in ``[0.0, 1.0]`` (Req 3.1
-            default 0.5, supplied by the caller from config so it is never a
-            hardcoded literal, Req 3.2).
-        metrics: The collector to record the decision in. When ``None``, the
-            process-wide shared collector is used.
+            When omitted, a trivial ``{key: key}`` map is derived from
+            ``handlers`` so the simplest callers need only supply handlers. Must
+            share the same key set as ``handlers``.
+        fallback: A deterministic, zero-argument rule returning the option key to
+            use when genuine inference fails. It must return a key present in
+            ``handlers`` (an unknown key is a caller error, raised as
+            :class:`KeyError`).
+        timeout_ms: The decision timeout in milliseconds, supplied by the caller.
+        confidence_threshold: The confidence threshold in ``[0.0, 1.0]``,
+            supplied by the caller so it is never a hardcoded literal.
+        metrics: Optional sink for decision telemetry — either an object exposing
+            ``record_decision(...)`` (see :class:`MetricsHook`) or a plain
+            callable with the same keyword signature. When ``None``, nothing is
+            recorded.
 
     Returns:
-        A :class:`DecisionResult` carrying the selected strategy, its source,
-        the decision latency, the genuine confidence (when available), and the
-        ``below_threshold`` flag.
+        A :class:`PatternDecision` carrying the chosen option, its resolved
+        handler, the decision source, latency, genuine confidence (when
+        available), the mock indicator, and the ``below_threshold`` flag.
+
+    Raises:
+        KeyError: if the chosen option (from the adapter or the fallback) has no
+            entry in ``handlers`` — a caller wiring error, surfaced rather than
+            silently swallowed.
     """
-    collector = metrics if metrics is not None else get_metrics_collector()
+    choice_options: Mapping[str, str] = (
+        options if options is not None else {key: key for key in handlers}
+    )
+    record = _resolve_record(metrics)
 
     try:
-        result = adapter.decide(
-            build_decision_state(context), options, timeout_ms
+        result: DecisionResult = adapter.decide(
+            state, dict(choice_options), timeout_ms
         )
     except DeciderError:
         # Genuine inference failed (timeout / transport / out-of-set). Apply the
-        # deterministic fallback and record a decision FAILURE (Req 4.1-4.3).
-        return _record_fallback(context, collector)
+        # caller's deterministic fallback and record a decision FAILURE.
+        return _fallback_decision(handlers, fallback, record)
 
-    # Defensive validation (Req 2.3): the adapter contract guarantees an in-set
-    # answer, but if a result ever carries a strategy outside the allowed option
-    # set, treat it as an out-of-set failure and fall back (Req 2.4).
-    if result.strategy.value not in options:
-        return _record_fallback(context, collector)
+    option_key = result.strategy.value
 
-    # Successful inference. Apply the confidence threshold for transparency
-    # (Req 3.4): mark below_threshold only when a GENUINE confidence exists and
-    # is STRICTLY below the configured threshold. This never forces a fallback
-    # (Req 4.5).
+    # Defensive validation: the adapter contract guarantees an in-set answer, but
+    # if a result ever carries an option outside the allowed set, treat it as an
+    # out-of-set failure and fall back.
+    if option_key not in choice_options or option_key not in handlers:
+        return _fallback_decision(handlers, fallback, record)
+
+    # Successful inference. Apply the confidence threshold for transparency: mark
+    # below_threshold only when a GENUINE confidence exists and is STRICTLY below
+    # the configured threshold. This never forces a fallback.
     below_threshold = (
         result.confidence is not None
         and result.confidence < confidence_threshold
     )
 
-    decision = DecisionResult(
-        strategy=result.strategy,
-        source=result.source,  # DECIDER_2B on the normal path (Req 2.7)
-        decision_latency_ms=result.decision_latency_ms,
+    # Record a SUCCESSFUL decision (failed=False): a successful inference is
+    # never counted as a decision failure.
+    record(
+        option=option_key,
+        source=SOURCE_DECIDER,
+        decision_latency_ms=max(int(result.decision_latency_ms), 0),
+        failed=False,
+    )
+
+    return PatternDecision(
+        option=option_key,
+        handler=handlers[option_key],
+        source=SOURCE_DECIDER,
+        decision_latency_ms=max(int(result.decision_latency_ms), 0),
         confidence=result.confidence,
         is_mock=result.is_mock,
         below_threshold=below_threshold,
     )
 
-    # Record a SUCCESSFUL decision (failed=False): a successful inference is
-    # never counted as a decision failure (Req 4.3/4.5 complement).
-    collector.record_decision(
-        strategy=decision.strategy,
-        source=decision.source,
-        decision_latency_ms=decision.decision_latency_ms,
-        failed=False,
-    )
-    return decision
 
+def _resolve_record(
+    metrics: MetricsHook | Callable[..., None] | None,
+) -> Callable[..., None]:
+    """Normalize the ``metrics`` argument to a plain ``record_decision`` callable.
 
-def _record_fallback(
-    context: FallbackContext,
-    collector: MetricsCollector,
-) -> DecisionResult:
-    """Build the fallback :class:`DecisionResult` and record a decision failure.
-
-    The fallback result always carries ``source=DecisionSource.FALLBACK``
-    (Req 4.2), no genuine ``confidence`` (so the API omits ``decision_confidence``
-    for fallbacks, Req 12.3), ``is_mock=False`` (a fallback is not a mock), and
-    zero decision latency (the deterministic rule is effectively instantaneous;
-    the failed call's latency is not a genuine decision latency). It records the
-    event as a decision *failure* so it is never counted as a successful
-    inference (Req 4.3).
-
-    The deterministic :func:`fallback_strategy` always yields one of the three
-    :class:`Strategy` values, which is its output domain regardless of any
-    (possibly reduced) ``options`` set a caller supplied for the decider call —
-    so no option-set check is applied here.
+    Accepts an object exposing ``record_decision`` (a :class:`MetricsHook`), a
+    bare callable with the same keyword signature, or ``None`` (no-op). This is
+    what keeps the pattern free of any concrete metrics type.
     """
-    strategy = fallback_strategy(context)
-    collector.record_decision(
-        strategy=strategy,
-        source=DecisionSource.FALLBACK,
+    if metrics is None:
+        return _noop_record
+    record = getattr(metrics, "record_decision", None)
+    if callable(record):
+        return record
+    if callable(metrics):
+        return metrics
+    return _noop_record
+
+
+def _fallback_decision(
+    handlers: Mapping[str, H],
+    fallback: Callable[[], str],
+    record: Callable[..., None],
+) -> PatternDecision[H]:
+    """Build the fallback :class:`PatternDecision` and record a decision failure.
+
+    The fallback decision always carries ``source="fallback"``, no genuine
+    ``confidence``, ``is_mock=False`` (a fallback is not a mock), and zero
+    decision latency (the deterministic rule is effectively instantaneous). It is
+    recorded as a decision *failure* so it is never counted as a successful
+    inference.
+    """
+    option_key = fallback()
+    record(
+        option=option_key,
+        source=SOURCE_FALLBACK,
         decision_latency_ms=0,
         failed=True,
     )
-    return DecisionResult(
-        strategy=strategy,
-        source=DecisionSource.FALLBACK,
+    return PatternDecision(
+        option=option_key,
+        handler=handlers[option_key],
+        source=SOURCE_FALLBACK,
         decision_latency_ms=0,
         confidence=None,
         is_mock=False,
@@ -322,45 +319,91 @@ def _record_fallback(
     )
 
 
-def select_cooking_strategy(
-    context: FallbackContext,
-    adapter: DeciderAdapter,
-    *,
-    settings: object | None = None,
-    metrics: MetricsCollector | None = None,
-) -> DecisionResult:
-    """Project-wired convenience over :func:`select_strategy` (CraveQuest).
+# --------------------------------------------------------------------------- #
+# Minimal adaptation example (#tool-selection)                                #
+# --------------------------------------------------------------------------- #
+#
+# The following runnable example demonstrates the pattern used with a mock
+# adapter and a trivial option-to-handler map, WITHOUT any CraveQuest-specific
+# component. Run it directly with ``python -m app.decision_patterns.cooking_strategy``
+# to see the pattern pick an option and route it to its handler. Adapting the
+# pattern to another project is exactly this: supply your own options, your own
+# option-to-handler map, and your own deterministic fallback rule.
 
-    Binds CraveQuest's configuration — the decision timeout
-    (``DECISION_TIMEOUT_MS``) and the confidence threshold
-    (``DECISION_CONFIDENCE_THRESHOLD``, default 0.5, read from config so it is
-    never hardcoded, Req 3.1/3.2) — and the shared ``Metrics_Collector`` to the
-    reusable core, using the three CraveQuest strategy options.
 
-    Args:
-        context: The validated meal-decision inputs.
-        adapter: The decider interface to query (real or mock).
-        settings: An object exposing ``decision_timeout_ms`` and
-            ``decision_confidence_threshold``. When ``None``,
-            :func:`app.config.get_settings` is used (loaded lazily so importing
-            this module never triggers config/env validation).
-        metrics: The collector to record into. Defaults to the process-wide one.
+class _ExampleMockAdapter:
+    """A trivial, self-contained :class:`DeciderAdapter` for the example.
 
-    Returns:
-        The selected :class:`DecisionResult`.
+    Satisfies the adapter contract without any CraveQuest dependency: it simply
+    returns the first option key (in sorted order) as a deterministic, genuine
+    "decider" choice. It deliberately does NOT reuse CraveQuest's
+    ``MockDeciderAdapter``, whose choice is validated against the CraveQuest
+    ``Strategy`` enum — showing the pattern works with arbitrary option keys.
     """
-    if settings is None:
-        # Lazy import so importing this module does not trigger settings/env
-        # validation at import time (mirrors the adapters' convention).
-        from app.config import get_settings
 
-        settings = get_settings()
+    def decide(
+        self, state: str, options: dict[str, str], timeout_ms: int
+    ) -> DecisionResult:
+        if not options:
+            raise DeciderError("no options to choose from")
+        chosen = sorted(options)[0]
+        # The pattern reads only ``result.strategy.value``; a tiny object with a
+        # ``value`` attribute satisfies that contract without any enum.
+        return DecisionResult(
+            strategy=_OptionKey(chosen),  # type: ignore[arg-type]
+            source=None,  # type: ignore[arg-type]  # source is read off the pattern, not here
+            decision_latency_ms=1,
+            confidence=0.9,
+            is_mock=True,
+        )
 
-    return select_strategy(
-        context,
-        adapter,
-        options=STRATEGY_OPTIONS,
-        timeout_ms=settings.decision_timeout_ms,
-        confidence_threshold=settings.decision_confidence_threshold,
-        metrics=metrics,
+
+@dataclass(frozen=True)
+class _OptionKey:
+    """Minimal stand-in exposing ``.value`` so the example needs no enum."""
+
+    value: str
+
+
+def example_main() -> PatternDecision[Callable[[], str]]:
+    """Run the pattern once with a trivial handler map and a mock adapter.
+
+    Returns the :class:`PatternDecision` so the example is also importable and
+    assertable from a test without printing. Nothing here references CraveQuest.
+    """
+    # A trivial option-to-handler map: each option key maps to a tiny handler.
+    # Handlers are opaque to the pattern — here they are plain callables.
+    handlers: dict[str, Callable[[], str]] = {
+        "greet": lambda: "hello from the greet handler",
+        "farewell": lambda: "goodbye from the farewell handler",
+    }
+    # Human-readable meanings the decider chooses over.
+    options = {
+        "greet": "Say hello to the user.",
+        "farewell": "Say goodbye to the user.",
+    }
+
+    decision = select_option(
+        "A user just arrived.",
+        _ExampleMockAdapter(),
+        handlers,
+        options=options,
+        # Deterministic fallback used only if inference fails: pick "greet".
+        fallback=lambda: "greet",
+        timeout_ms=1000,
+        confidence_threshold=0.5,
+        # No metrics hook supplied — the pattern records nothing.
+    )
+    return decision
+
+
+if __name__ == "__main__":  # pragma: no cover - manual demonstration entry point
+    _decision = example_main()
+    _output = _decision.handler()
+    print(
+        "#tool-selection pattern demo:\n"
+        f"  chosen option : {_decision.option}\n"
+        f"  source        : {_decision.source}\n"
+        f"  is_mock       : {_decision.is_mock}\n"
+        f"  handler output: {_output}"
     )

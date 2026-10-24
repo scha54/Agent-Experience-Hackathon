@@ -1,0 +1,13 @@
+# CDK / Node build artifacts
+node_modules/
+cdk.out/
+*.js
+*.d.ts
+!jest.config.js
+*.tsbuildinfo
+
+# Secrets — never commit (Req 26.3)
+.env
+.env.*
+!.env.example
+cdk.context.json

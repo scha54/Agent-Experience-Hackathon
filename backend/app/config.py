@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     max_session_requests: int = Field(
         default=20, ge=1, alias="MAX_SESSION_REQUESTS"
     )
+    # Optional credential for the aggregate metrics endpoint. When omitted, the
+    # endpoint is not publicly exposed (Req 14.2).
+    metrics_access_token: str | None = Field(
+        default=None, alias="METRICS_ACCESS_TOKEN"
+    )
 
     # --- Strategy tool limits ---
     no_cook_max_prep_minutes: int = Field(
