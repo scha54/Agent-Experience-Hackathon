@@ -61,8 +61,8 @@ supplied at runtime from AWS Secrets Manager / SSM, not committed here.
 | `deciderModel` / `DECIDER_MODEL` | Decider checkpoint id | placeholder |
 | `strandsDeciderApiBase` / `STRANDS_DECIDER_API_BASE` | Decider server base URL | `http://127.0.0.1:8000` |
 | `desiredCount` / `DESIRED_COUNT` | Running Fargate tasks | `1` |
-| `cpu` / `TASK_CPU` | Task CPU units | `2048` |
-| `memoryLimitMiB` / `TASK_MEMORY_MIB` | Task memory (MiB) | `8192` |
+| `cpu` / `TASK_CPU` | Task CPU units (PERF-2: right-sized for FastAPI-only image) | `512` |
+| `memoryLimitMiB` / `TASK_MEMORY_MIB` | Task memory (MiB) | `1024` |
 | `logRetentionDays` / `LOG_RETENTION_DAYS` | CloudWatch retention | `30` |
 | `frontendRepository` / `FRONTEND_REPOSITORY` | Git repo URL for Amplify builds | unset (manual deploy) |
 | `frontendBranch` / `FRONTEND_BRANCH` | Branch Amplify builds | `main` |
@@ -72,6 +72,13 @@ supplied at runtime from AWS Secrets Manager / SSM, not committed here.
 | `budgetNotificationEmail` / `BUDGET_NOTIFICATION_EMAIL` | Email for budget notifications (80% actual / 100% forecast) | unset |
 | `opsAlertEmail` / `OPS_ALERT_EMAIL` | Email subscribed to the ops-alerts SNS topic | unset |
 | `fallbackRateAlarmThreshold` / `FALLBACK_RATE_ALARM_THRESHOLD` | Fallback-rate alarm threshold [0,1] | `0.5` |
+| `apiThrottleRateLimit` / `API_THROTTLE_RATE_LIMIT` | SEC-2 API edge throttling steady-state rate (req/s) | `20` |
+| `apiThrottleBurstLimit` / `API_THROTTLE_BURST_LIMIT` | SEC-2 API edge throttling burst limit | `40` |
+| `enableScheduledScaling` / `ENABLE_SCHEDULED_SCALING` | CO-3 scheduled scale-to-zero off-hours toggle | `true` |
+| `scheduledScaleDownCron` / `SCHEDULED_SCALE_DOWN_CRON` | CO-3 scale-DOWN cron body (UTC, AWS 6-field) | `0 20 * * ? *` |
+| `scheduledScaleUpCron` / `SCHEDULED_SCALE_UP_CRON` | CO-3 scale-UP cron body (UTC, AWS 6-field) | `0 8 * * ? *` |
+| `deciderApiKeySecretArn` / `DECIDER_API_KEY_SECRET_ARN` | SEC-5/SEC-7 reference an existing Decider-token secret by ARN | unset → create empty secret |
+| `metricsAccessTokenSecretArn` / `METRICS_ACCESS_TOKEN_SECRET_ARN` | SEC-5/SEC-7 reference an existing metrics-token secret by ARN | unset → create empty secret |
 
 > **SEC-3 guard:** for any `environment` other than `dev`, synth FAILS if
 > `allowedOrigins` is still the localhost default (`http://localhost:5173`).
@@ -134,6 +141,62 @@ enable ECR scanning) or via `aws inspector2 enable --resource-types ECR`. This
 scans every repository, including the CDK asset repo, on push. This is the
 least-disruptive, synth-clean remediation and is intentionally a documented
 account step, not a code change.
+
+## Demo hardening (Well-Architected, demo scope)
+
+A focused, additive, reversible pass of cost-protective remediations for the
+short-lived demo deployment. No production always-on expense is added (no second
+task, no HTTPS/ACM, no VPC endpoints, no WAF/authorizer); teardown stays clean
+with `cdk destroy`.
+
+- **SEC-2 — API edge throttling**: the API Gateway HTTP API `$default` stage
+  carries default-route throttling (`apiThrottleRateLimit` req/s,
+  `apiThrottleBurstLimit` burst; demo defaults `20` / `40`). This caps a traffic
+  spike so it can't fan out into paid Bedrock calls. Throttling only — no
+  authorizer, WAF, or CloudFront.
+- **SEC-5 / SEC-7 — Secrets Manager for tokens**: the Decider bearer token and
+  the metrics access token are injected into the container from Secrets Manager
+  (`ecs.Secret`), never as plaintext env. The task role gets read scoped to
+  exactly those two secret ARNs. See "Populating the secrets after deploy".
+- **PERF-2 — right-sized task**: the Fargate task runs at `512` CPU units /
+  `1024` MiB (0.5 vCPU / 1 GB). The backend image currently ships only FastAPI
+  (no co-located Decider 2B model), so the previous `2048` / `8192` sizing was
+  unnecessary for the demo. If the Decider 2B is later co-located in the image,
+  revisit the `cpu` / `memoryLimitMiB` defaults.
+- **CO-3 — scheduled scale-to-zero off-hours**: when `enableScheduledScaling` is
+  `true` (default), an Application Auto Scaling schedule drops the service to 0
+  tasks off-hours and back to 1 during business hours. Crons are **UTC** (AWS
+  6-field `cron(min hour day-of-month month day-of-week year)` form); defaults
+  scale down at 20:00 UTC and up at 08:00 UTC. This is not target-tracking
+  autoscaling and does not raise the steady desiredCount above 1. Set
+  `enableScheduledScaling=false` to keep the service running around the clock.
+
+### Populating the secrets after deploy
+
+By default the stack creates two **empty** Secrets Manager secrets:
+
+- `cravequest/decider-api-key` → injected as `STRANDS_DECIDER_API_KEY`
+- `cravequest/metrics-access-token` → injected as `METRICS_ACCESS_TOKEN`
+
+(If you referenced existing secrets via `deciderApiKeySecretArn` /
+`metricsAccessTokenSecretArn`, use those ARNs/names instead.) After `cdk deploy`,
+populate the values — they are never committed or set as plaintext env
+(SEC-5/SEC-7):
+
+```bash
+aws secretsmanager put-secret-value \
+  --secret-id cravequest/decider-api-key \
+  --secret-string '<decider-bearer-token>'
+
+aws secretsmanager put-secret-value \
+  --secret-id cravequest/metrics-access-token \
+  --secret-string '<metrics-access-token>'
+```
+
+Both backend settings are optional, so synth and container startup stay valid
+while the secrets are empty. ECS resolves a secret at task start, so after
+changing a value restart or scale the service (e.g. force a new deployment) for
+the task to pick it up — no redeploy of the stack is needed.
 
 ### Cost-allocation tags (OE-5 / CO-5)
 

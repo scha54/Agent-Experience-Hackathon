@@ -45,10 +45,19 @@ export interface StackConfig {
   /** Desired number of running Fargate tasks. */
   readonly desiredCount: number;
 
-  /** Task CPU units (1024 = 1 vCPU). 2B serving needs generous memory/CPU. */
+  /**
+   * Task CPU units (1024 = 1 vCPU). PERF-2: the backend image currently ships
+   * ONLY FastAPI (no co-located Decider 2B model), so the demo default is a
+   * right-sized 0.5 vCPU (`512`). If the Decider 2B is later co-located in the
+   * image, this should be revisited and raised accordingly.
+   */
   readonly cpu: number;
 
-  /** Task memory (MiB). Must be a valid Fargate CPU/memory combination. */
+  /**
+   * Task memory (MiB). Must be a valid Fargate CPU/memory combination. PERF-2:
+   * right-sized to `1024` (1 GB) for the FastAPI-only demo image (valid with
+   * cpu `512`); revisit if the Decider 2B model is later co-located.
+   */
   readonly memoryLimitMiB: number;
 
   /** CloudWatch log retention in days. */
@@ -99,6 +108,53 @@ export interface StackConfig {
    * decision fallback rate at/above this fires the SNS alarm. Default 0.5.
    */
   readonly fallbackRateAlarmThreshold: number;
+
+  /**
+   * SEC-2: API Gateway HTTP API default-stage throttling steady-state rate
+   * limit (requests/second). Demo-sane cap so a traffic spike can't fan out
+   * into paid Bedrock calls. Default 20.
+   */
+  readonly apiThrottleRateLimit: number;
+
+  /**
+   * SEC-2: API Gateway HTTP API default-stage throttling burst limit (max
+   * concurrent requests the bucket allows). Default 40.
+   */
+  readonly apiThrottleBurstLimit: number;
+
+  /**
+   * CO-3: enable the scheduled scale-to-zero off-hours action on the Fargate
+   * service. Default `true` for the demo; set to `false`/`0`/`no` to keep the
+   * service at its steady desiredCount around the clock.
+   */
+  readonly enableScheduledScaling: boolean;
+
+  /**
+   * CO-3: AWS 6-field cron body (UTC) for the scale-DOWN-to-zero schedule
+   * (`Minutes Hours Day-of-month Month Day-of-week Year`). Wrapped in
+   * `cron(...)` when applied. Default `0 20 * * ? *` (20:00 UTC daily).
+   */
+  readonly scheduledScaleDownCron: string;
+
+  /**
+   * CO-3: AWS 6-field cron body (UTC) for the scale-UP-to-one schedule.
+   * Default `0 8 * * ? *` (08:00 UTC daily).
+   */
+  readonly scheduledScaleUpCron: string;
+
+  /**
+   * SEC-5/SEC-7: optional ARN of a pre-existing Secrets Manager secret holding
+   * the Decider bearer token (`STRANDS_DECIDER_API_KEY`). When unset the stack
+   * creates an empty secret the operator populates after deploy.
+   */
+  readonly deciderApiKeySecretArn?: string;
+
+  /**
+   * SEC-5/SEC-7: optional ARN of a pre-existing Secrets Manager secret holding
+   * the metrics access token (`METRICS_ACCESS_TOKEN`). When unset the stack
+   * creates an empty secret the operator populates after deploy.
+   */
+  readonly metricsAccessTokenSecretArn?: string;
 }
 
 /** The localhost CORS default; a non-dev deploy that still carries it fails synth (SEC-3). */
@@ -191,9 +247,10 @@ export function loadStackConfig(app: cdk.App): StackConfig {
       fromContextOrEnv(app, 'desiredCount', 'DESIRED_COUNT', '1')!,
       10,
     ),
-    cpu: parseInt(fromContextOrEnv(app, 'cpu', 'TASK_CPU', '2048')!, 10),
+    // PERF-2: right-sized to 0.5 vCPU / 1 GB for the FastAPI-only demo image.
+    cpu: parseInt(fromContextOrEnv(app, 'cpu', 'TASK_CPU', '512')!, 10),
     memoryLimitMiB: parseInt(
-      fromContextOrEnv(app, 'memoryLimitMiB', 'TASK_MEMORY_MIB', '8192')!,
+      fromContextOrEnv(app, 'memoryLimitMiB', 'TASK_MEMORY_MIB', '1024')!,
       10,
     ),
     logRetentionDays: parseInt(
@@ -237,6 +294,49 @@ export function loadStackConfig(app: cdk.App): StackConfig {
         'FALLBACK_RATE_ALARM_THRESHOLD',
         '0.5',
       )!,
+    ),
+    // SEC-2: demo-sane edge throttling defaults (20 req/s, burst 40).
+    apiThrottleRateLimit: parseInt(
+      fromContextOrEnv(app, 'apiThrottleRateLimit', 'API_THROTTLE_RATE_LIMIT', '20')!,
+      10,
+    ),
+    apiThrottleBurstLimit: parseInt(
+      fromContextOrEnv(app, 'apiThrottleBurstLimit', 'API_THROTTLE_BURST_LIMIT', '40')!,
+      10,
+    ),
+    // CO-3: scheduled scale-to-zero off-hours (default on). Only an explicit
+    // falsey value disables it.
+    enableScheduledScaling: !['false', '0', 'no'].includes(
+      fromContextOrEnv(
+        app,
+        'enableScheduledScaling',
+        'ENABLE_SCHEDULED_SCALING',
+        'true',
+      )!.toLowerCase(),
+    ),
+    scheduledScaleDownCron: fromContextOrEnv(
+      app,
+      'scheduledScaleDownCron',
+      'SCHEDULED_SCALE_DOWN_CRON',
+      '0 20 * * ? *',
+    )!,
+    scheduledScaleUpCron: fromContextOrEnv(
+      app,
+      'scheduledScaleUpCron',
+      'SCHEDULED_SCALE_UP_CRON',
+      '0 8 * * ? *',
+    )!,
+    // SEC-5/SEC-7: optional override ARNs; left undefined when unset so the
+    // stack defaults to creating empty operator-populated secrets.
+    deciderApiKeySecretArn: fromContextOrEnv(
+      app,
+      'deciderApiKeySecretArn',
+      'DECIDER_API_KEY_SECRET_ARN',
+    ),
+    metricsAccessTokenSecretArn: fromContextOrEnv(
+      app,
+      'metricsAccessTokenSecretArn',
+      'METRICS_ACCESS_TOKEN_SECRET_ARN',
     ),
   };
 }

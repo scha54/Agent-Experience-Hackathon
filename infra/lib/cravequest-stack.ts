@@ -53,6 +53,8 @@ import * as cloudwatch_actions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as sns_subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as applicationautoscaling from 'aws-cdk-lib/aws-applicationautoscaling';
 import * as path from 'path';
 import { StackConfig } from './config';
 
@@ -167,6 +169,44 @@ export class CraveQuestStack extends cdk.Stack {
     // Own-log-group writes only (Req 26.1).
     containerLogGroup.grantWrite(taskRole);
 
+    // ── SEC-5 / SEC-7: Secrets Manager for the two sensitive tokens ─────
+    // The Decider bearer token (STRANDS_DECIDER_API_KEY) and the metrics access
+    // token (METRICS_ACCESS_TOKEN) are NEVER set as plaintext env. By default
+    // the stack creates two EMPTY secrets the operator populates after deploy
+    // (`aws secretsmanager put-secret-value ...`); synth/startup stay valid
+    // because both backend settings are optional. An operator managing secrets
+    // centrally can instead reference pre-existing secrets by ARN via config.
+    const deciderSecret = config.deciderApiKeySecretArn
+      ? secretsmanager.Secret.fromSecretCompleteArn(
+          this,
+          'DeciderApiKeySecret',
+          config.deciderApiKeySecretArn,
+        )
+      : new secretsmanager.Secret(this, 'DeciderApiKeySecret', {
+          secretName: 'cravequest/decider-api-key',
+          description:
+            'Bearer token for the Strands Decider 2B API (operator-populated after deploy).',
+        });
+
+    const metricsSecret = config.metricsAccessTokenSecretArn
+      ? secretsmanager.Secret.fromSecretCompleteArn(
+          this,
+          'MetricsAccessTokenSecret',
+          config.metricsAccessTokenSecretArn,
+        )
+      : new secretsmanager.Secret(this, 'MetricsAccessTokenSecret', {
+          secretName: 'cravequest/metrics-access-token',
+          description:
+            'Access token gating the aggregate metrics endpoint (operator-populated after deploy).',
+        });
+
+    // Grant the task (runtime) role scoped read on exactly these two secret
+    // ARNs — never a wildcard (Req 26.1). The ecs.Secret wiring below grants
+    // the execution role read automatically so the agent can resolve the
+    // secret at task launch.
+    deciderSecret.grantRead(taskRole);
+    metricsSecret.grantRead(taskRole);
+
     // ── Container image (Backend_API + Decider_2B) ──────────────────────
     // Built from the backend/ directory Dockerfile. The image bundles the
     // FastAPI Backend_API and the Decider_2B serving process.
@@ -225,6 +265,12 @@ export class CraveQuestStack extends cdk.Stack {
         // API / CORS
         ALLOWED_ORIGINS: config.allowedOrigins,
       },
+      // SEC-5/SEC-7: sensitive tokens are injected from Secrets Manager (NOT
+      // as plaintext env). The env var NAMES match backend/app/config.py.
+      secrets: {
+        STRANDS_DECIDER_API_KEY: ecs.Secret.fromSecretsManager(deciderSecret),
+        METRICS_ACCESS_TOKEN: ecs.Secret.fromSecretsManager(metricsSecret),
+      },
       portMappings: [{ containerPort: 8080 }],
       // OE-3: container-level health check so ECS can replace a hung task
       // independently of the ALB target-group probe. Uses a Python one-liner
@@ -255,6 +301,34 @@ export class CraveQuestStack extends cdk.Stack {
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
     });
+
+    // ── CO-3: scheduled scale-to-zero off-hours (cost reduction) ────────
+    // Demo cost control ONLY: a scheduled Application Auto Scaling action drops
+    // the service to 0 tasks off-hours and back to 1 during business hours.
+    // This is NOT target-tracking autoscaling and does NOT raise desiredCount
+    // beyond 1 (Bucket C, out of scope). Crons are UTC (AWS 6-field form).
+    // Outside the down-window steady state is a single task, matching
+    // desiredCount (which is intentionally left unchanged).
+    if (config.enableScheduledScaling) {
+      const scaling = service.autoScaleTaskCount({
+        minCapacity: 0,
+        maxCapacity: 1,
+      });
+      scaling.scaleOnSchedule('ScaleToZeroOffHours', {
+        schedule: applicationautoscaling.Schedule.expression(
+          `cron(${config.scheduledScaleDownCron})`,
+        ),
+        minCapacity: 0,
+        maxCapacity: 0,
+      });
+      scaling.scaleOnSchedule('ScaleUpBusinessHours', {
+        schedule: applicationautoscaling.Schedule.expression(
+          `cron(${config.scheduledScaleUpCron})`,
+        ),
+        minCapacity: 1,
+        maxCapacity: 1,
+      });
+    }
 
     // ── Internal Application Load Balancer ──────────────────────────────
     // Fronts the Fargate tasks privately; API Gateway reaches it over a VPC
@@ -314,6 +388,18 @@ export class CraveQuestStack extends cdk.Stack {
         { vpcLink },
       ),
     });
+
+    // ── SEC-2: request throttling on the HTTP API default stage ─────────
+    // The L2 HttpApi exposes no throttle prop, so we set default-route
+    // throttling on the auto-created `$default` stage via its CfnStage. This
+    // caps edge traffic (demo-sane 20 req/s, burst 40) so a spike can't fan out
+    // into paid Bedrock calls. Throttling ONLY — no authorizer/WAF/CloudFront.
+    const defaultStage = httpApi.defaultStage!.node
+      .defaultChild as apigwv2.CfnStage;
+    defaultStage.defaultRouteSettings = {
+      throttlingRateLimit: config.apiThrottleRateLimit,
+      throttlingBurstLimit: config.apiThrottleBurstLimit,
+    };
 
     // ── CO-1 / OE-1: shared operational-alerts SNS topic ────────────────
     // One topic is reused for both cost (CO-1) and operational (OE-1) alerts,
